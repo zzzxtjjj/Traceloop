@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 def utc_now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Base(DeclarativeBase):
@@ -178,5 +178,186 @@ class AuditEvent(Base):
     entity_type: Mapped[str] = mapped_column(String(50))
     entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     detail_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class BusinessObject(Base):
+    __tablename__ = "business_objects"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "object_type", "external_key", name="uq_business_object_key"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    object_type: Mapped[str] = mapped_column(String(40), index=True)
+    external_key: Mapped[str] = mapped_column(String(160))
+    display_name: Mapped[str] = mapped_column(String(200))
+    attributes_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class Evidence(Base):
+    __tablename__ = "evidence"
+    __table_args__ = (
+        UniqueConstraint("project_id", "dedupe_key", name="uq_evidence_project_dedupe"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    evidence_type: Mapped[str] = mapped_column(String(50), index=True)
+    source_entity_type: Mapped[str] = mapped_column(String(50), index=True)
+    source_entity_id: Mapped[int] = mapped_column(Integer, index=True)
+    locator_json: Mapped[str] = mapped_column(Text, default="{}")
+    excerpt: Mapped[str] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    dedupe_key: Mapped[str] = mapped_column(String(64))
+    business_object_id: Mapped[int | None] = mapped_column(
+        ForeignKey("business_objects.id"), nullable=True, index=True
+    )
+    observed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class Finding(Base):
+    __tablename__ = "findings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    finding_type: Mapped[str] = mapped_column(String(50), index=True)
+    statement: Mapped[str] = mapped_column(Text)
+    epistemic_status: Mapped[str] = mapped_column(String(30), index=True)
+    review_status: Mapped[str] = mapped_column(String(30), default="draft", index=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    denominator_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    denominator_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    time_window_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    time_window_end: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    model_run_id: Mapped[int | None] = mapped_column(ForeignKey("ai_runs.id"), nullable=True)
+    missing_info_json: Mapped[str] = mapped_column(Text, default="[]")
+    alternative_explanations_json: Mapped[str] = mapped_column(Text, default="[]")
+    suggested_actions_json: Mapped[str] = mapped_column(Text, default="[]")
+    reviewed_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class EvidenceLink(Base):
+    __tablename__ = "evidence_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "evidence_id",
+            "target_type",
+            "target_id",
+            "relation_type",
+            name="uq_evidence_link",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence.id"), index=True)
+    target_type: Mapped[str] = mapped_column(String(50), index=True)
+    target_id: Mapped[int] = mapped_column(Integer, index=True)
+    relation_type: Mapped[str] = mapped_column(String(40), default="supports")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class ReviewImportMetadata(Base):
+    __tablename__ = "review_import_metadata"
+    __table_args__ = (UniqueConstraint("batch_id", name="uq_review_metadata_batch"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("review_batches.id"), index=True)
+    artifact_id: Mapped[int] = mapped_column(ForeignKey("artifacts.id"), index=True)
+    source_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    time_window_start: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    time_window_end: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    taxonomy_version: Mapped[str] = mapped_column(String(40), default="review_themes_v1")
+    imported_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class ReviewThemeAssignment(Base):
+    __tablename__ = "review_theme_assignments"
+    __table_args__ = (
+        UniqueConstraint(
+            "review_id", "theme", "taxonomy_version", name="uq_review_theme_assignment"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("review_batches.id"), index=True)
+    review_id: Mapped[int] = mapped_column(ForeignKey("reviews.id"), index=True)
+    theme: Mapped[str] = mapped_column(String(80), index=True)
+    classification_method: Mapped[str] = mapped_column(String(30), default="rule_based")
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    evidence_excerpt: Mapped[str] = mapped_column(Text)
+    taxonomy_version: Mapped[str] = mapped_column(String(40), default="review_themes_v1")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class TaskSubmission(Base):
+    __tablename__ = "task_submissions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), index=True)
+    submitted_by_role: Mapped[str] = mapped_column(String(30))
+    content: Mapped[str] = mapped_column(Text)
+    evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence.id"), index=True)
+    review_status: Mapped[str] = mapped_column(String(30), default="pending_review")
+    reviewed_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ImprovementRecord(Base):
+    __tablename__ = "improvement_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    finding_id: Mapped[int] = mapped_column(ForeignKey("findings.id"), index=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), index=True)
+    baseline_batch_id: Mapped[int] = mapped_column(ForeignKey("review_batches.id"), index=True)
+    followup_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("review_batches.id"), nullable=True, index=True
+    )
+    theme: Mapped[str] = mapped_column(String(80), index=True)
+    baseline_count: Mapped[int] = mapped_column(Integer)
+    baseline_share: Mapped[float] = mapped_column(Float)
+    baseline_sample_size: Mapped[int] = mapped_column(Integer)
+    followup_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    followup_share: Mapped[float | None] = mapped_column(Float, nullable=True)
+    followup_sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    count_delta: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    share_delta: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="planned")
+    limitation_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class RuleCheckRecord(Base):
+    __tablename__ = "rule_check_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    rule_id: Mapped[str] = mapped_column(String(100), index=True)
+    market: Mapped[str] = mapped_column(String(10), index=True)
+    scenario: Mapped[str] = mapped_column(String(50), index=True)
+    source_type: Mapped[str] = mapped_column(String(30))
+    source_reference: Mapped[str] = mapped_column(Text)
+    source_version: Mapped[str] = mapped_column(String(80))
+    status: Mapped[str] = mapped_column(String(30), index=True)
+    matched_text: Mapped[str] = mapped_column(Text, default="")
+    explanation: Mapped[str] = mapped_column(Text)
+    input_hash: Mapped[str] = mapped_column(String(64), index=True)
+    human_review_status: Mapped[str] = mapped_column(String(30), default="pending_review")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 

@@ -1,0 +1,11 @@
+review_id,batch,rating,date,sku,market,review_text,order_id,production_batch,supplier
+DEMO-F-001,After,2,2026-10-01,BOTTLE-750,US,The box arrived crushed.,ORDER-F-001,PB-DEMO-02,Ningbo Alpha
+DEMO-F-002,After,5,2026-10-02,BOTTLE-750,US,Works as expected.,ORDER-F-002,PB-DEMO-02,Ningbo Alpha
+DEMO-F-003,After,5,2026-10-03,BOTTLE-750,US,Good temperature retention.,ORDER-F-003,PB-DEMO-02,Ningbo Alpha
+DEMO-F-004,After,5,2026-10-04,BOTTLE-750,US,Packaging arrived intact.,ORDER-F-004,PB-DEMO-02,Ningbo Alpha
+DEMO-F-005,After,4,2026-10-05,BOTTLE-750,US,Delivery was on time.,ORDER-F-005,PB-DEMO-02,Ningbo Alpha
+DEMO-F-006,After,5,2026-10-06,BOTTLE-750,US,Works as expected.,ORDER-F-006,PB-DEMO-02,Ningbo Alpha
+DEMO-F-007,After,5,2026-10-07,BOTTLE-750,US,Instructions were clear.,ORDER-F-007,PB-DEMO-02,Ningbo Alpha
+DEMO-F-008,After,4,2026-10-08,BOTTLE-750,US,Good product.,ORDER-F-008,PB-DEMO-02,Ningbo Alpha
+DEMO-F-009,After,5,2026-10-09,BOTTLE-750,US,No issues.,ORDER-F-009,PB-DEMO-02,Ningbo Alpha
+DEMO-F-010,After,5,2026-10-10,BOTTLE-750,US,Works as expected.,ORDER-F-010,PB-DEMO-02,Ningbo Alpha

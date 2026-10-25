@@ -32,3 +32,13 @@ def session_scope() -> Generator[Session, None, None]:
     finally:
         session.close()
 
+
+@contextmanager
+def session_context(session: Session | None = None) -> Generator[Session, None, None]:
+    """Use a caller-owned session in tests/composed services, or create a transaction."""
+    if session is not None:
+        yield session
+        return
+    with session_scope() as managed:
+        yield managed
+

@@ -8,11 +8,13 @@ from typing import BinaryIO
 import pandas as pd
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from core.config import settings
-from core.db import session_scope
-from core.models import Artifact, AuditEvent, SupplierQuote
+from core.db import session_context
+from core.models import Artifact, AuditEvent, BusinessObject, SupplierQuote
 from core.schemas import QuoteImportPreview, QuoteRow, RowError
+from services.evidence_service import create_evidence
 
 QUOTE_COLUMNS = [
     "supplier",
@@ -102,7 +104,12 @@ def preview_quote_csv(source: str | Path | bytes | BinaryIO) -> QuoteImportPrevi
 
 
 def import_quotes(
-    project_id: int, source: str | Path | bytes | BinaryIO, batch_name: str
+    project_id: int,
+    source: str | Path | bytes | BinaryIO,
+    batch_name: str,
+    *,
+    upload_root: Path | None = None,
+    session: Session | None = None,
 ) -> Artifact:
     preview = preview_quote_csv(source)
     if not preview.is_valid:
@@ -111,8 +118,8 @@ def import_quotes(
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(preview.filename).name)
     raw, _ = _read_source(source)
 
-    with session_scope() as session:
-        existing = session.scalar(
+    with session_context(session) as db:
+        existing = db.scalar(
             select(Artifact).where(
                 Artifact.project_id == project_id,
                 Artifact.artifact_type == "supplier_quotes",
@@ -130,19 +137,51 @@ def import_quotes(
             sha256=preview.sha256,
             parse_status="valid",
         )
-        session.add(artifact)
-        session.flush()
+        db.add(artifact)
+        db.flush()
 
-        project_dir = settings.upload_dir / str(project_id)
+        project_dir = (upload_root or settings.upload_dir) / str(project_id)
         project_dir.mkdir(parents=True, exist_ok=True)
         stored_path = project_dir / f"{artifact.id}_{safe_name}"
         stored_path.write_bytes(raw)
         artifact.stored_path = str(stored_path)
 
-        for row in preview.rows:
-            session.add(SupplierQuote(artifact_id=artifact.id, **row.model_dump()))
+        for row_number, row in enumerate(preview.rows, start=2):
+            quote = SupplierQuote(artifact_id=artifact.id, **row.model_dump())
+            db.add(quote)
+            db.flush()
+            supplier = db.scalar(
+                select(BusinessObject).where(
+                    BusinessObject.project_id == project_id,
+                    BusinessObject.object_type == "supplier",
+                    BusinessObject.external_key == row.supplier,
+                )
+            )
+            if not supplier:
+                supplier = BusinessObject(
+                    project_id=project_id,
+                    object_type="supplier",
+                    external_key=row.supplier,
+                    display_name=row.supplier,
+                )
+                db.add(supplier)
+                db.flush()
+            create_evidence(
+                project_id=project_id,
+                evidence_type="supplier_quote_row",
+                source_entity_type="supplier_quote",
+                source_entity_id=quote.id,
+                locator={
+                    "artifact_id": artifact.id,
+                    "csv_row": row_number,
+                    "supplier": row.supplier,
+                },
+                excerpt=json.dumps(row.model_dump(), ensure_ascii=False, sort_keys=True),
+                business_object_id=supplier.id,
+                session=db,
+            )
 
-        session.add(
+        db.add(
             AuditEvent(
                 project_id=project_id,
                 actor_role="项目负责人",
@@ -155,10 +194,12 @@ def import_quotes(
     return artifact
 
 
-def list_quote_artifacts(project_id: int) -> list[Artifact]:
-    with session_scope() as session:
+def list_quote_artifacts(
+    project_id: int, session: Session | None = None
+) -> list[Artifact]:
+    with session_context(session) as db:
         return list(
-            session.scalars(
+            db.scalars(
                 select(Artifact)
                 .where(
                     Artifact.project_id == project_id,
@@ -169,10 +210,15 @@ def list_quote_artifacts(project_id: int) -> list[Artifact]:
         )
 
 
-def get_quotes(artifact_id: int) -> list[SupplierQuote]:
-    with session_scope() as session:
+def get_quotes(
+    project_id: int, artifact_id: int, session: Session | None = None
+) -> list[SupplierQuote]:
+    with session_context(session) as db:
+        artifact = db.get(Artifact, artifact_id)
+        if not artifact or artifact.project_id != project_id:
+            raise ValueError("报价批次不存在或不属于当前项目。")
         return list(
-            session.scalars(
+            db.scalars(
                 select(SupplierQuote)
                 .where(SupplierQuote.artifact_id == artifact_id)
                 .order_by(SupplierQuote.id)

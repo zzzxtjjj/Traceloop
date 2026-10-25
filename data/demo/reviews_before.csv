@@ -1,0 +1,11 @@
+review_id,batch,rating,date,sku,market,review_text,order_id,production_batch,supplier
+DEMO-B-001,Before,2,2026-09-01,BOTTLE-750,US,The box arrived crushed.,,,
+DEMO-B-002,Before,2,2026-09-02,BOTTLE-750,US,Packaging was damaged and the bottle had a dent.,,,
+DEMO-B-003,Before,1,2026-09-03,BOTTLE-750,US,Damaged box on arrival.,,,
+DEMO-B-004,Before,2,2026-09-04,BOTTLE-750,US,The outer box arrived crushed.,,,
+DEMO-B-005,Before,2,2026-09-05,BOTTLE-750,US,Packaging was damaged.,,,
+DEMO-B-006,Before,2,2026-09-06,BOTTLE-750,US,The lid has a leak.,,,
+DEMO-B-007,Before,3,2026-09-07,BOTTLE-750,US,Dimensions could be clearer.,,,
+DEMO-B-008,Before,5,2026-09-08,BOTTLE-750,US,Works as expected.,,,
+DEMO-B-009,Before,5,2026-09-09,BOTTLE-750,US,Good temperature retention.,,,
+DEMO-B-010,Before,4,2026-09-10,BOTTLE-750,US,Delivery was on time.,,,

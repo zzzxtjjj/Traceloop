@@ -13,6 +13,7 @@ from services.imports import (
     list_quote_artifacts,
     preview_quote_csv,
 )
+from services.quote_analysis import analyze_quote_artifact, confirm_supplier_decision
 from services.supplier_scoring import DEFAULT_WEIGHTS, calculate_supplier_scores
 
 init_db()
@@ -94,7 +95,8 @@ with score_tab:
     if sum(weights.values()) != 100:
         st.error(f"当前权重合计 {sum(weights.values())}%，请调整为 100%。")
     else:
-        scores = calculate_supplier_scores(get_quotes(artifact_id), weights)
+        quotes = get_quotes(project_id, artifact_id)
+        scores = calculate_supplier_scores(quotes, weights)
         score_rows = []
         for rank, score in enumerate(scores, start=1):
             score_rows.append(
@@ -133,7 +135,54 @@ with score_tab:
 """
             )
 
-st.divider()
-st.info("下一阶段：在当前排名之上接入结构化 AI 决策摘要、风险问题和负责人确认。")
+        analysis = analyze_quote_artifact(
+            project_id=project_id,
+            artifact_id=artifact_id,
+            weights=weights,
+        )
+        st.markdown("### 来源证据与澄清事项")
+        for note in analysis.comparability_notes:
+            st.caption(f"• {note}")
+        for assessment in analysis.assessments:
+            with st.expander(f"{assessment.supplier} · {assessment.risk_level}"):
+                if assessment.risk_reasons:
+                    st.write("风险依据：" + "；".join(assessment.risk_reasons))
+                st.warning("缺失信息：" + "；".join(assessment.missing_information))
+                st.write("建议向供应商澄清：")
+                for question in assessment.clarification_questions:
+                    st.write(f"- {question}")
+                st.caption(
+                    f"证据 #{assessment.evidence_id} · 发现 #{assessment.finding_id}；"
+                    "风险词命中只描述原始报价，不直接判定供应商责任。"
+                )
+
+        st.markdown("### 人工采购决定")
+        selected_supplier = st.selectbox(
+            "最终选择",
+            options=[score.supplier for score in scores],
+            key=f"decision_supplier_{artifact_id}",
+        )
+        decision_reason = st.text_area(
+            "决策理由",
+            placeholder="说明权衡，并列出仍待确认的价格、质量或交付条件。",
+            key=f"decision_reason_{artifact_id}",
+        )
+        can_confirm = role == "项目负责人"
+        if not can_confirm:
+            st.info("当前演示流程仅由“项目负责人”确认最终供应商。")
+        if st.button("确认供应商决定", type="primary", disabled=not can_confirm):
+            try:
+                decision = confirm_supplier_decision(
+                    project_id=project_id,
+                    artifact_id=artifact_id,
+                    supplier=selected_supplier,
+                    reason=decision_reason,
+                    actor_role=role,
+                )
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                st.success(f"决定 #{decision.id} 已保存：{decision.human_choice}。")
+
 render_footer()
 
