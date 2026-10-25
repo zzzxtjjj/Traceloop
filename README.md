@@ -20,6 +20,7 @@ TradeLoop 是一个证据驱动的跨境业务协作工作台。V1 将供应商�
 
 详细完成度与限制见 [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)。
 两人分工、同步点和共同提交门槛见 [docs/TEAM_COLLABORATION.md](docs/TEAM_COLLABORATION.md)。
+更直接的逐项执行表见 [docs/两人分工执行表.md](docs/两人分工执行表.md)。
 
 ## 项目结构
 
