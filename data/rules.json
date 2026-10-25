@@ -1,0 +1,23 @@
+[
+  {
+    "rule_id": "US-PROMISE-001",
+    "market": "US",
+    "category": "promotion_claim",
+    "pattern_or_instruction": "guaranteed|100% effective|always",
+    "severity": "red",
+    "source_url": "TO_BE_CONFIRMED",
+    "source_title": "演示规则，正式路演前需替换为可追溯来源",
+    "updated_at": "2026-10-25"
+  },
+  {
+    "rule_id": "DE-TONE-001",
+    "market": "DE",
+    "category": "culture_language",
+    "pattern_or_instruction": "Avoid unsupported absolute promises; use precise and restrained wording.",
+    "severity": "yellow",
+    "source_url": "TO_BE_CONFIRMED",
+    "source_title": "演示规则，正式路演前需替换为可追溯来源",
+    "updated_at": "2026-10-25"
+  }
+]
+

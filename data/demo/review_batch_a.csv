@@ -1,0 +1,7 @@
+review_id,batch,rating,date,sku,market,review_text
+A001,A,1,2026-09-01,CUP-750,US,The box arrived crushed and the lid was scratched.
+A002,A,2,2026-09-03,CUP-750,US,The bottle is fine but delivery took much longer than expected.
+A003,A,1,2026-09-05,CUP-750,US,Packaging was damaged and the cup had a dent.
+A004,A,3,2026-09-08,CUP-750,US,The instructions were difficult to understand.
+A005,A,2,2026-09-10,CUP-750,US,The product size looks different from the description.
+

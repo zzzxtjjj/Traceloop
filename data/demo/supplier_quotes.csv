@@ -1,0 +1,5 @@
+supplier,unit_price,currency,moq,lead_time_days,payment_terms,quality_note
+Ningbo Alpha,4.80,USD,500,18,"30% deposit; 70% before shipment",样品已确认；质检记录完整
+Shenzhen Beta,4.45,USD,800,25,"50% deposit; 50% before shipment",样品未确认；价格有优势
+Suzhou Gamma,5.10,USD,300,14,"30 days after shipment",交期稳定；第三方测试报告齐全
+

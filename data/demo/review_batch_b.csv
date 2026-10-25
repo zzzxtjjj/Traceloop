@@ -1,0 +1,7 @@
+review_id,batch,rating,date,sku,market,review_text
+B001,B,2,2026-10-01,CUP-750,US,Delivery was late but the product arrived safely.
+B002,B,4,2026-10-03,CUP-750,US,The new packaging protected the cup well.
+B003,B,2,2026-10-05,CUP-750,US,The instructions are still hard to follow.
+B004,B,4,2026-10-08,CUP-750,US,The bottle arrived without damage.
+B005,B,3,2026-10-10,CUP-750,US,The listed dimensions could be clearer.
+
