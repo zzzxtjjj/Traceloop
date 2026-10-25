@@ -2,10 +2,13 @@
 
 TradeLoop 是一个面向中小外贸团队负责人的 AI 项目工作台。当前提交完成了第一阶段：项目空间、报价 CSV 导入校验，以及可解释的供应商评分。
 
+界面采用“宁波海港 × 江南美学 × 全球贸易”的浅色编辑式视觉系统，所有共享样式集中在 `core/theme.py`，主视觉使用本地 SVG，不依赖外部图片或在线字体。
+
 ## 当前可验收功能
 
 - 创建项目，目标市场支持美国和德国。
-- 项目访问码使用 PBKDF2-SHA256 哈希保存，页面不会保存明文。
+- 项目访问码至少 8 位，使用 PBKDF2-SHA256 哈希保存，页面不会保存明文。
+- 连续失败 5 次后，本浏览器 Session 暂停验证 60 秒。
 - 一键创建演示项目，访问码为 `demo2026`。
 - 下载/上传报价 CSV，预览有效行和逐行错误。
 - 阻止缺列、错误类型、重复供应商和混合币种进入数据库。
@@ -21,10 +24,12 @@ TradeLoop 是一个面向中小外贸团队负责人的 AI 项目工作台。当
 hackson/
 ├─ app.py
 ├─ pages/                 # Streamlit 页面，只处理交互
+├─ assets/                # 本地 SVG 品牌插画
 ├─ core/                  # 配置、数据库、模型、Schema、共享 UI
 ├─ services/              # 可测试的业务逻辑
 ├─ data/demo/             # 可提交的模拟演示数据
 ├─ prompts/               # 后续 AI Prompt 版本管理
+├─ docs/ACCESS_SECURITY.md # Passkey 与访问安全设计
 ├─ scripts/seed_demo.py   # 演示数据初始化
 ├─ tests/                 # 自动测试
 ├─ .env.example
@@ -81,6 +86,8 @@ git push -u origin main
 ```
 
 `.env`、SQLite 数据库、上传文件和虚拟环境已在 `.gitignore` 中排除。
+
+正式产品的访问安全方案见 `docs/ACCESS_SECURITY.md`。V1 的共享访问码仅用于黑客松演示，不应被描述为企业级身份认证。
 
 ## 下一阶段
 

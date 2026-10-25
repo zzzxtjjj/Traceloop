@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     product_name: str = Field(min_length=2, max_length=160)
-    access_code: str = Field(min_length=4, max_length=40)
+    access_code: str = Field(min_length=8, max_length=64)
     markets: list[str] = Field(min_length=1)
 
     @field_validator("name", "product_name", "access_code")

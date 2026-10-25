@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from core.db import init_db
+from core.theme import apply_brand_theme, render_footer, render_page_header
 from core.ui import render_sidebar
 from services.imports import (
     QuoteImportValidationError,
@@ -17,9 +18,13 @@ from services.supplier_scoring import DEFAULT_WEIGHTS, calculate_supplier_scores
 init_db()
 TEMPLATE_FILE = Path(__file__).resolve().parents[1] / "data" / "demo" / "supplier_quotes.csv"
 
-st.set_page_config(page_title="报价决策 · TradeLoop", page_icon="📊", layout="wide")
-st.title("报价决策")
-st.caption("先由代码做可复现的加权比较，再由 AI 补充决策摘要（下一阶段）。")
+st.set_page_config(page_title="报价决策 · TradeLoop", page_icon="⚓", layout="wide")
+apply_brand_theme()
+render_page_header(
+    "SUPPLY CHAIN DESK · 供应链票据",
+    "报价决策",
+    "让价格、起订量、交期与质量风险在同一张商务票据上清晰可比。",
+)
 
 project_id, role = render_sidebar()
 if project_id is None:
@@ -50,14 +55,14 @@ with upload_tab:
             st.dataframe(
                 pd.DataFrame([row.model_dump() for row in preview.rows]),
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
         if preview.errors:
             st.error("文件未通过校验，不会写入数据库。")
             st.dataframe(
                 pd.DataFrame([error.model_dump() for error in preview.errors]),
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
         elif st.button("确认导入", type="primary"):
             try:
@@ -109,7 +114,7 @@ with score_tab:
                 }
             )
         frame = pd.DataFrame(score_rows)
-        st.dataframe(frame, hide_index=True, use_container_width=True)
+        st.dataframe(frame, hide_index=True, width="stretch")
         st.bar_chart(frame.set_index("供应商")["总分"])
 
         winner = scores[0]
@@ -130,4 +135,5 @@ with score_tab:
 
 st.divider()
 st.info("下一阶段：在当前排名之上接入结构化 AI 决策摘要、风险问题和负责人确认。")
+render_footer()
 
