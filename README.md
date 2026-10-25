@@ -19,6 +19,7 @@ TradeLoop 是一个证据驱动的跨境业务协作工作台。V1 将供应商�
 - AI 结构化输出验证、一次修复重试、超时和无效 JSON 错误处理（真实模型供应商尚未配置）。
 
 详细完成度与限制见 [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)。
+两人分工、同步点和共同提交门槛见 [docs/TEAM_COLLABORATION.md](docs/TEAM_COLLABORATION.md)。
 
 ## 项目结构
 
