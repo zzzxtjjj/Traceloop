@@ -1,6 +1,13 @@
 import pytest
 
-from core.errors import ModelOutputValidationError, ModelTimeoutError
+from core.errors import (
+    ModelAuthenticationError,
+    ModelOutputValidationError,
+    ModelProviderError,
+    ModelRateLimitError,
+    ModelResponseError,
+    ModelTimeoutError,
+)
 from core.models import AiRun, Project
 from core.schemas import StructuredAIOutput
 from services.ai_service import run_structured_model
@@ -95,4 +102,37 @@ def test_model_timeout_is_recorded(db_session) -> None:
     run = db_session.query(AiRun).one()
     assert run.status == "failed"
     assert run.error_code == "MODEL_TIMEOUT"
+
+
+@pytest.mark.parametrize(
+    ("provider_error", "error_code"),
+    [
+        (ModelAuthenticationError("auth"), "MODEL_AUTH_ERROR"),
+        (ModelRateLimitError("rate"), "MODEL_RATE_LIMIT"),
+        (ModelProviderError("server"), "MODEL_PROVIDER_ERROR"),
+        (ModelResponseError("bad response"), "MODEL_BAD_RESPONSE"),
+    ],
+)
+def test_provider_error_is_recorded_without_repair_retry(
+    db_session, provider_error: Exception, error_code: str
+) -> None:
+    project = make_project(db_session)
+    provider = FakeProvider([provider_error])
+
+    with pytest.raises(type(provider_error)):
+        run_structured_model(
+            project_id=project.id,
+            run_type="review_analysis",
+            prompt_version="v1",
+            prompt="Sensitive review text.",
+            evidence_ids=[42],
+            output_model=StructuredAIOutput,
+            provider=provider,
+            session=db_session,
+        )
+
+    run = db_session.query(AiRun).one()
+    assert run.status == "failed"
+    assert run.error_code == error_code
+    assert run.input_hash
 

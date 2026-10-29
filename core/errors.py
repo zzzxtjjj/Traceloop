@@ -32,6 +32,22 @@ class ModelTimeoutError(TradeLoopError):
     code = "MODEL_TIMEOUT"
 
 
+class ModelAuthenticationError(TradeLoopError):
+    code = "MODEL_AUTH_ERROR"
+
+
+class ModelRateLimitError(TradeLoopError):
+    code = "MODEL_RATE_LIMIT"
+
+
+class ModelProviderError(TradeLoopError):
+    code = "MODEL_PROVIDER_ERROR"
+
+
+class ModelResponseError(TradeLoopError):
+    code = "MODEL_BAD_RESPONSE"
+
+
 class ModelOutputValidationError(TradeLoopError):
     code = "MODEL_BAD_JSON"
 

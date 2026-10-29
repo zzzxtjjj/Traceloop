@@ -7,7 +7,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
 from core.db import session_context
-from core.errors import ModelOutputValidationError, ModelTimeoutError
+from core.errors import ModelOutputValidationError, ModelTimeoutError, TradeLoopError
 from core.models import AiRun
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
@@ -68,10 +68,16 @@ def run_structured_model(
                 )
             except TimeoutError as exc:
                 run.status = "failed"
-                run.error_code = "MODEL_TIMEOUT"
+                run.error_code = ModelTimeoutError.code
                 run.latency_ms = int((time.perf_counter() - started) * 1000)
                 db.flush()
                 raise ModelTimeoutError("模型调用超时，请稍后重试。") from exc
+            except TradeLoopError as exc:
+                run.status = "failed"
+                run.error_code = exc.code
+                run.latency_ms = int((time.perf_counter() - started) * 1000)
+                db.flush()
+                raise
 
             try:
                 parsed = (
