@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import streamlit as st
 
@@ -10,6 +11,7 @@ from core.errors import TradeLoopError
 from core.theme import apply_brand_theme, render_footer, render_page_header
 from core.ui import render_sidebar
 from services.finding_service import review_finding
+from services.model_readiness import check_model_readiness
 from services.review_service import (
     THEME_LABELS,
     analyze_review_batch,
@@ -46,6 +48,7 @@ AI_ERROR_MESSAGES = {
     "MODEL_BAD_RESPONSE": "模型服务返回了无法解析的响应。",
     "MODEL_BAD_JSON": "模型输出未通过结构校验，未写入半成品 Finding。",
     "MODEL_EVIDENCE_INVALID": "模型引用的评价 ID 或原文片段无效，未写入 Finding。",
+    "MODEL_INPUT_LIMIT": "输入超过本次模型分析上限，未发起外部调用。",
     "MODEL_ANALYSIS_WRITE_FAILED": "模型结果写入失败，事务已回滚。",
 }
 
@@ -76,6 +79,56 @@ def render_ai_run_summary(run) -> None:
     if error_code:
         error_message = AI_ERROR_MESSAGES.get(error_code, "模型调用失败。")
         st.error(f"error_code：{error_code} · {error_message}")
+
+
+def render_model_configuration_status(readiness) -> None:
+    """Show safe local configuration metadata without triggering a live request."""
+    key_configured = "MODEL_API_KEY" not in readiness.missing_fields
+    service_host = urlsplit(readiness.base_url).hostname or "未配置或无效"
+    status = (
+        "尚未真实联网验证"
+        if readiness.configured
+        else "配置不完整 · 尚未真实联网验证"
+    )
+    max_attempts = readiness.max_attempts
+    first, second, third = st.columns(3)
+    first.metric("API Key", "已配置" if key_configured else "未配置")
+    second.metric("模型名", readiness.model_name or "未配置")
+    third.metric("服务地址主机", service_host)
+    fourth, fifth, sixth = st.columns(3)
+    fourth.metric("请求超时", f"{readiness.timeout_seconds:g} 秒")
+    fifth.metric(
+        "单次输入上限",
+        f"{readiness.max_input_chars:,} 字符 / {readiness.max_reviews_per_run} 条评价 / "
+        f"最多 {max_attempts} 次请求",
+    )
+    sixth.metric("联网状态", status)
+    if readiness.issues:
+        st.warning("本地配置存在无效项，请运行离线检查命令并修正 .env。")
+
+    with st.expander("模型 API 安全配置与检查命令"):
+        st.caption(
+            "只把真实密钥放在本机 .env 或部署 Secret 中，不要提交 Git 或放进截图。"
+        )
+        st.code(
+            "MODEL_API_KEY=<YOUR_API_KEY>\n"
+            "MODEL_NAME=<YOUR_MODEL_NAME>\n"
+            "MODEL_BASE_URL=https://api.openai.com/v1\n"
+            "MODEL_TIMEOUT_SECONDS=30\n"
+            "MODEL_MAX_INPUT_CHARS=50000\n"
+            "MODEL_MAX_REVIEWS_PER_RUN=200\n"
+            "MODEL_MAX_ATTEMPTS=1",
+            language="dotenv",
+        )
+        st.caption(
+            "MODEL_MAX_ATTEMPTS 默认 1，不自动进行结构修复重试；"
+            "只有用户显式设置为 2 时才允许一次结构修复。联网检查始终只请求 1 次。"
+        )
+        st.write("离线检查（不发起外部请求）：")
+        st.code(r"python scripts\check_model_api.py", language="powershell")
+        st.write("明确接受可能的请求与费用后，才由操作者在终端执行联网检查：")
+        st.code(r"python scripts\check_model_api.py --live", language="powershell")
+        st.caption("页面不提供在线测试按钮；以上地址仅为兼容格式示例，不代表已验证。")
 
 
 def render_closed_loop_trace(trace: FindingTrace) -> None:
@@ -213,12 +266,14 @@ analysis_mode = st.radio(
     horizontal=True,
     help="规则分类可复现；AI 分类必须通过结构校验和人工审核。",
 )
-model_configured = bool(settings.model_api_key.strip() and settings.model_name.strip())
+model_readiness = check_model_readiness(settings)
+render_model_configuration_status(model_readiness)
+model_configured = model_readiness.configured
 if model_configured:
-    st.success(f"模型已配置：{settings.model_name}")
+    st.success(f"模型本地配置已就绪：{model_readiness.model_name}；尚未真实联网验证。")
 else:
     st.warning(
-        "模型未配置：缺少 MODEL_API_KEY 或 MODEL_NAME。选择真实 AI 时将明确降级为规则分类。"
+        "模型配置不完整或无效。请先运行离线检查；选择真实 AI 时将明确降级为规则分类。"
     )
 
 if st.button("运行所选分类", type="primary"):

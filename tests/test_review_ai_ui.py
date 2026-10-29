@@ -11,6 +11,7 @@ import services.review_service
 from core.config import Settings
 from core.errors import (
     ModelAuthenticationError,
+    ModelInputLimitError,
     ModelOutputValidationError,
     ModelProviderError,
     ModelRateLimitError,
@@ -68,7 +69,10 @@ def test_unconfigured_model_downgrades_to_rules_without_page_error(monkeypatch) 
 
     assert not app.exception
     assert app.radio[0].options == ["规则分类", "真实 AI 分类"]
-    assert any("模型未配置" in item.value for item in app.warning)
+    assert any("模型配置不完整或无效" in item.value for item in app.warning)
+    metric_values = {item.label: item.value for item in app.metric}
+    assert metric_values["API Key"] == "未配置"
+    assert "尚未真实联网验证" in metric_values["联网状态"]
 
     app.radio[0].set_value("真实 AI 分类")
     next(button for button in app.button if button.label == "运行所选分类").click()
@@ -93,6 +97,13 @@ def test_configured_model_displays_run_metadata(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "services.review_ai_service", fake_service)
 
     app = _prepare_page(monkeypatch, configured=True).run(timeout=10)
+    initial_metrics = {item.label: item.value for item in app.metric}
+    assert initial_metrics["API Key"] == "已配置"
+    assert initial_metrics["模型名"] == "configured-model"
+    assert initial_metrics["服务地址主机"] == "api.openai.com"
+    assert initial_metrics["联网状态"] == "尚未真实联网验证"
+    assert "最多 1 次请求" in initial_metrics["单次输入上限"]
+    assert any("默认 1" in item.value for item in app.caption)
     app.radio[0].set_value("真实 AI 分类")
     next(button for button in app.button if button.label == "运行所选分类").click()
     app.run(timeout=10)
@@ -115,6 +126,7 @@ def test_configured_model_displays_run_metadata(monkeypatch) -> None:
         (ModelProviderError, "模型服务暂时不可用"),
         (ModelResponseError, "无法解析"),
         (ModelOutputValidationError, "结构校验"),
+        (ModelInputLimitError, "输入超过本次模型分析上限"),
     ],
 )
 def test_model_failures_are_clear_and_fall_back_without_crashing(
@@ -143,3 +155,44 @@ def test_model_failures_are_clear_and_fall_back_without_crashing(
     assert not app.exception
     assert any(expected_message in item.value for item in app.error)
     assert any("已降级为规则分类" in item.value for item in app.warning)
+
+
+def test_page_never_displays_api_key_or_offers_live_test_button(monkeypatch) -> None:
+    secret = "sk-DO-NOT-LEAK-123456"
+    project = SimpleNamespace(
+        id=1,
+        name="UI Test",
+        product_name="Bottle",
+        markets_json='["US"]',
+    )
+    user = SimpleNamespace(id=7, display_name="UI User", email="ui@example.com")
+    batch = SimpleNamespace(id=11, name="Before", market="US", sample_size=12)
+    monkeypatch.setattr(core.ui, "list_users", lambda: [user])
+    monkeypatch.setattr(core.ui, "list_user_projects", lambda _user_id: [project])
+    monkeypatch.setattr(
+        core.ui,
+        "require_project_member",
+        lambda _project_id, _user_id: SimpleNamespace(role="owner"),
+    )
+    monkeypatch.setattr(services.review_service, "list_review_batches", lambda _id: [batch])
+    monkeypatch.setattr(
+        services.review_service,
+        "list_batch_findings",
+        lambda _project_id, _batch_id: [],
+    )
+    monkeypatch.setattr(
+        core.config,
+        "settings",
+        Settings(model_api_key=secret, model_name="safe-model"),
+    )
+    app = AppTest.from_file(str(PAGE))
+    app.session_state["current_user_id"] = user.id
+    app.session_state["unlocked_project_ids"] = [project.id]
+    app.session_state["active_project_id"] = project.id
+
+    app.run(timeout=10)
+
+    assert not app.exception
+    assert secret not in str(app)
+    assert all("在线测试" not in button.label for button in app.button)
+    assert any("页面不提供在线测试按钮" in item.value for item in app.caption)
