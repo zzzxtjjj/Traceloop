@@ -20,6 +20,7 @@ from core.schemas import ReviewAIAnalysisResult, ReviewModelBatchOutput
 from services.ai_service import StructuredModelProvider, run_structured_model
 from services.evidence_service import create_evidence, create_finding, submit_finding_for_review
 from services.model_provider import OpenAICompatibleProvider
+from services.model_readiness import validate_model_input_budget
 from services.review_service import THEME_ACTIONS, THEME_ALTERNATIVES, THEME_LABELS
 
 PROMPT_VERSION = "review_classify_v1"
@@ -146,11 +147,18 @@ def analyze_review_batch_with_model(
         )
         evidence_ids = sorted({item.id for item in source_evidence})
         active_provider = provider or OpenAICompatibleProvider.from_settings()
+        prompt = _minimal_prompt(reviews)
+        validate_model_input_budget(
+            prompt=prompt,
+            review_count=len(reviews),
+            max_input_chars=getattr(active_provider, "max_input_chars", None),
+            max_reviews_per_run=getattr(active_provider, "max_reviews_per_run", None),
+        )
         output = run_structured_model(
             project_id=project_id,
             run_type=_run_type(batch_id),
             prompt_version=PROMPT_VERSION,
-            prompt=_minimal_prompt(reviews),
+            prompt=prompt,
             evidence_ids=evidence_ids,
             output_model=ReviewModelBatchOutput,
             provider=active_provider,

@@ -59,7 +59,10 @@ def run_structured_model(
         db.flush()
 
         invalid_payload: str | None = None
-        for attempt in range(2):
+        max_attempts = getattr(provider, "max_attempts", 1)
+        if max_attempts not in {1, 2}:
+            max_attempts = 1
+        for attempt in range(max_attempts):
             try:
                 raw = provider.generate(
                     prompt=prompt,
@@ -92,7 +95,7 @@ def run_structured_model(
                 return parsed
             except (ValidationError, ValueError, json.JSONDecodeError) as exc:
                 invalid_payload = str(raw)
-                if attempt == 1:
+                if attempt == max_attempts - 1:
                     run.status = "failed"
                     run.error_code = "MODEL_BAD_JSON"
                     run.latency_ms = int((time.perf_counter() - started) * 1000)

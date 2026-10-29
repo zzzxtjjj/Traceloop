@@ -52,6 +52,10 @@ class ModelOutputValidationError(TradeLoopError):
     code = "MODEL_BAD_JSON"
 
 
+class ModelInputLimitError(TradeLoopError):
+    code = "MODEL_INPUT_LIMIT"
+
+
 class RuleSourceError(TradeLoopError):
     code = "RULE_SOURCE_INVALID"
 

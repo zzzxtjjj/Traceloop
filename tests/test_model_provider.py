@@ -68,6 +68,9 @@ def test_provider_uses_values_from_settings() -> None:
         model_name="configured-model",
         model_base_url="https://gateway.example.test/openai/v1",
         model_timeout_seconds=7.0,
+        model_max_input_chars=4321,
+        model_max_reviews_per_run=17,
+        model_max_attempts=2,
     )
 
     provider = OpenAICompatibleProvider.from_settings(config, transport=transport)
@@ -76,6 +79,9 @@ def test_provider_uses_values_from_settings() -> None:
     assert provider.model_name == "configured-model"
     assert transport.calls[0]["url"].endswith("/openai/v1/chat/completions")
     assert transport.calls[0]["timeout"] == 7.0
+    assert provider.max_input_chars == 4321
+    assert provider.max_reviews_per_run == 17
+    assert provider.max_attempts == 2
 
 
 def test_provider_requires_configuration_without_making_request() -> None:

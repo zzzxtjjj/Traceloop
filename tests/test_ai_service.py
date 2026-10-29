@@ -16,10 +16,13 @@ from services.ai_service import run_structured_model
 class FakeProvider:
     model_name = "fake-model"
 
-    def __init__(self, responses):
+    def __init__(self, responses, *, max_attempts=1):
         self.responses = iter(responses)
+        self.max_attempts = max_attempts
+        self.calls = 0
 
     def generate(self, *, prompt, schema, repair_from=None):
+        self.calls += 1
         response = next(self.responses)
         if isinstance(response, Exception):
             raise response
@@ -38,7 +41,9 @@ def make_project(session) -> Project:
     return project
 
 
-def test_invalid_model_output_is_retried_once(db_session) -> None:
+def test_invalid_model_output_is_retried_once_only_when_explicitly_enabled(
+    db_session,
+) -> None:
     project = make_project(db_session)
     provider = FakeProvider(
         [
@@ -49,7 +54,8 @@ def test_invalid_model_output_is_retried_once(db_session) -> None:
                 "missing_information": ["production batch"],
                 "requires_human_review": True,
             },
-        ]
+        ],
+        max_attempts=2,
     )
     result = run_structured_model(
         project_id=project.id,
@@ -64,11 +70,12 @@ def test_invalid_model_output_is_retried_once(db_session) -> None:
     assert result.requires_human_review is True
     run = db_session.query(AiRun).one()
     assert run.status == "success"
+    assert provider.calls == 2
 
 
 def test_invalid_model_output_never_enters_success_state(db_session) -> None:
     project = make_project(db_session)
-    provider = FakeProvider(["bad", "still bad"])
+    provider = FakeProvider(["bad", "still bad"], max_attempts=2)
     with pytest.raises(ModelOutputValidationError):
         run_structured_model(
             project_id=project.id,
@@ -80,6 +87,29 @@ def test_invalid_model_output_never_enters_success_state(db_session) -> None:
             provider=provider,
             session=db_session,
         )
+    run = db_session.query(AiRun).one()
+    assert run.status == "failed"
+    assert run.error_code == "MODEL_BAD_JSON"
+    assert provider.calls == 2
+
+
+def test_invalid_model_output_is_not_retried_by_default(db_session) -> None:
+    project = make_project(db_session)
+    provider = FakeProvider(["bad", AssertionError("must not retry")])
+
+    with pytest.raises(ModelOutputValidationError):
+        run_structured_model(
+            project_id=project.id,
+            run_type="review_analysis",
+            prompt_version="v1",
+            prompt="Analyze evidence.",
+            evidence_ids=[],
+            output_model=StructuredAIOutput,
+            provider=provider,
+            session=db_session,
+        )
+
+    assert provider.calls == 1
     run = db_session.query(AiRun).one()
     assert run.status == "failed"
     assert run.error_code == "MODEL_BAD_JSON"

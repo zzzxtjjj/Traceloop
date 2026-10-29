@@ -2,7 +2,11 @@
 import pytest
 from sqlalchemy import select
 
-from core.errors import CrossProjectReferenceError, ModelOutputValidationError
+from core.errors import (
+    CrossProjectReferenceError,
+    ModelInputLimitError,
+    ModelOutputValidationError,
+)
 from core.models import (
     AiRun,
     Evidence,
@@ -255,3 +259,24 @@ def test_latest_ai_run_checks_project_ownership(db_session) -> None:
 
     with pytest.raises(CrossProjectReferenceError):
         get_latest_review_ai_run(other.id, batch.id, session=db_session)
+
+
+@pytest.mark.parametrize(
+    ("max_input_chars", "max_reviews_per_run"),
+    [(1, 100), (100_000, 1)],
+)
+def test_model_budget_is_checked_before_transport_or_ai_run(
+    db_session, max_input_chars: int, max_reviews_per_run: int
+) -> None:
+    project, batch, _ = make_batch(db_session, "Budget protected")
+    provider = FakeProvider(valid_output())
+    provider.max_input_chars = max_input_chars
+    provider.max_reviews_per_run = max_reviews_per_run
+
+    with pytest.raises(ModelInputLimitError):
+        analyze_review_batch_with_model(
+            project.id, batch.id, provider=provider, session=db_session
+        )
+
+    assert provider.calls == []
+    assert get_latest_review_ai_run(project.id, batch.id, session=db_session) is None

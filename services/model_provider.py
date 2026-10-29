@@ -68,12 +68,18 @@ class OpenAICompatibleProvider:
         model_name: str,
         base_url: str,
         timeout_seconds: float,
+        max_input_chars: int = 50_000,
+        max_reviews_per_run: int = 200,
+        max_attempts: int = 1,
         transport: HttpTransport | None = None,
     ) -> None:
         self.api_key = api_key.strip()
         self.model_name = model_name.strip()
         self.base_url = base_url.strip()
         self.timeout_seconds = timeout_seconds
+        self.max_input_chars = max_input_chars
+        self.max_reviews_per_run = max_reviews_per_run
+        self.max_attempts = max_attempts
         self.transport = transport or UrllibHttpTransport()
 
     @classmethod
@@ -88,6 +94,9 @@ class OpenAICompatibleProvider:
             model_name=config.model_name,
             base_url=config.model_base_url,
             timeout_seconds=config.model_timeout_seconds,
+            max_input_chars=config.model_max_input_chars,
+            max_reviews_per_run=config.model_max_reviews_per_run,
+            max_attempts=config.model_max_attempts,
             transport=transport,
         )
 
