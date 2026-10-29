@@ -1,10 +1,12 @@
 # TradeLoop 一次性批量验收清单
 
-> 当前自动测试基线：168 项测试通过，Ruff 通过。
+> 当前自动测试基线：174 项测试通过，Ruff 通过。
 >
 > 使用方式：两人基于同一个最终候选 commit 从上到下执行。自动检查已经有本轮证据的项目可标记为完成；所有页面、业务流程、现场交付和最终 Git 项目必须由操作者实际验证后再打勾。
 >
 > 当前 `hackathon-final` 标签仍禁用。
+
+需要独立 Chat 模式复核时，复制 [Chat 模式独立验收 Prompt](CHAT_MODE_REVIEW_PROMPT.md)。可以另存同名桌面副本，但不在仓库文档中记录桌面绝对路径。
 
 ## 1. 自动检查
 
@@ -21,20 +23,21 @@ python scripts\verify_release.py --json
 python scripts\verify_release.py --full
 ```
 
-截至本轮的事实：发布检查新增 upstream 同步门禁。文档编辑期间实测 quick / JSON 为 6 pass、2 warning、2 fail，fail 来自工作树修改和本地分支 ahead；这是门禁正常工作，不能勾成发布通过。提交、推送和清理工作树后必须重新实测，历史计数不得沿用。
+截至本轮的事实：发布检查包含 upstream 同步门禁。二维码代码和自动检查已通过，但当前文档尚未最终提交/推送，发布检查仍会因工作树修改或本地分支 ahead 而 fail；这是门禁正常工作，不能勾成发布通过。提交、推送和清理工作树后必须重新实测，历史计数不得沿用。
 
-- [x] 当前自动测试基线为 168 项，Ruff 通过。
-- [x] 两个预期 warning 已确认不是程序故障：模型未配置/未 live 验证，以及海报二维码仍为占位。
-- [ ] 最终提交并推送后，quick 重新实测为 8 pass、2 warning、0 fail。
-- [ ] 最终提交并推送后，`--json` 重新实测为 8 pass、2 warning、0 fail。
-- [ ] 最终提交并推送后，`--full` 重新实测为 10 pass、2 warning、0 fail。
+- [x] 当前自动测试基线为 174 项，Ruff 通过。
+- [x] 可复现 SVG 二维码已指向 `https://github.com/zzzxtjjj/Traceloop`，相关自动测试通过。
+- [x] 唯一预期 warning 已确认不是程序故障：模型未配置/未 live 验证。
+- [ ] 最终提交并推送后，quick 重新实测为 9 pass、1 warning、0 fail。
+- [ ] 最终提交并推送后，`--json` 重新实测为 9 pass、1 warning、0 fail。
+- [ ] 最终提交并推送后，`--full` 重新实测为 11 pass、1 warning、0 fail。
 
 每次最终候选 commit 都要重新执行：
 
 - [ ] `python scripts\verify_release.py --full` 退出码为 0。
-- [ ] 测试数量不少于 168，且没有跳过失败项来维持绿色。
+- [ ] 测试数量不少于 174，且没有跳过失败项来维持绿色。
 - [ ] quick / JSON / full 都没有 `fail`。
-- [ ] warning 与现场事实一致；如果模型或二维码已完成，应更新状态而不是忽略旧 warning。
+- [ ] warning 与现场事实一致；最终自动 warning 仅为模型未配置/未 live 验证。
 
 ## 2. 页面人工检查
 
@@ -106,8 +109,9 @@ streamlit run app.py
 
 ## 6. 海报与三分钟路演
 
-- [ ] 用最终仓库或演示地址替换海报二维码占位。
+- [x] 海报使用可复现 SVG 二维码指向最终仓库地址。
 - [ ] 至少使用两部手机扫码成功。
+- [ ] 未登录/无缓存环境能够公开访问二维码目标仓库。
 - [ ] 导出文件物理尺寸为 0.8 m × 1.8 m，没有缩放成 A4。
 - [ ] 海报明确标注模拟数据、人工审核和安全边界。
 - [ ] 离线打开五段路演 HTML，导航正常。
@@ -124,7 +128,7 @@ streamlit run app.py
 - [ ] 从远程仓库克隆最终候选分支或 `main` 到新的空目录。
 - [ ] 创建独立虚拟环境并安装 `requirements.txt`。
 - [ ] 依次运行迁移、seed、`verify_release.py --full` 和 Streamlit HTTP 检查。
-- [ ] 最终候选测试数量不少于 168，Ruff 通过。
+- [ ] 最终候选测试数量不少于 174，Ruff 通过。
 - [ ] 记录最终 HEAD、Python 版本、数据库 revision、HTTP 状态和总耗时。
 
 ## 8. Git 最终同步与标签
@@ -142,7 +146,7 @@ python scripts\verify_release.py --full
 - [ ] 双方工作树干净。
 - [ ] 双方 `HEAD` 完全一致。
 - [ ] 最终 `HEAD` 与 `origin/main` 一致。
-- [ ] 双方均通过 168+ 测试、Ruff 和完整发布检查。
+- [ ] 双方均通过 174+ 测试、Ruff 和完整发布检查。
 - [ ] 页面、两条流程、异常、海报、路演和能力边界已由两人签字。
 - [ ] 真实 API 状态与事实一致：`已验证` 或 `未验证`。
 - [ ] `hackathon-final` 标签尚不存在，且前述项目全部完成。

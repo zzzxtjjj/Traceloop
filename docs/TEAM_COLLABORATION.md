@@ -13,7 +13,7 @@ integration/parallel-progress-20261029
 当前验证结果：
 
 ```text
-168 tests passed
+174 tests passed
 Ruff passed
 ```
 
@@ -96,7 +96,8 @@ git rev-parse HEAD
 - 正确访问码不授予成员资格；非成员仍会被 `require_project_member` 拒绝。
 - 模型输入字符数/评价数预算和 `MODEL_MAX_ATTEMPTS=1` 默认单次请求策略。
 - 默认离线模型配置检查；截至本轮未配置环境的状态为未配置且未 live 验证。
-- 离线发布检查 quick、`--json`、`--full`；最终推送后预期 quick/JSON 为 8 pass、2 warning、0 fail，full 为 10 pass、2 warning、0 fail，必须重新实测。
+- 离线发布检查 quick、`--json`、`--full`；最终推送后预期 quick/JSON 为 9 pass、1 warning、0 fail，full 为 11 pass、1 warning、0 fail，必须重新实测。唯一预期 warning 为模型未配置。
+- 海报可复现 SVG 二维码已指向 GitHub 仓库；两部手机扫码和仓库公开访问仍待人工验收。
 
 ## 4. 仍未完成或必须继续验证
 
@@ -159,14 +160,15 @@ git rev-parse HEAD
 完成条件：
 
 - [ ] 在最终代码上连续完成三次三分钟路演。
-- [ ] 替换海报二维码占位。
+- [x] 可复现 SVG 二维码已指向 `https://github.com/zzzxtjjj/Traceloop`。
+- [ ] 使用两部手机扫码，并在未登录环境确认仓库公开可访问。
 - [ ] 按主办方规格导出 800mm × 1800mm 海报。
 - [ ] README、实施状态、运行手册、路演和页面描述一致。
 - [ ] 新电脑从 clone 到启动不超过十分钟。
 
 ## 5. 共同同步点
 
-最终联合操作统一从[一次性批量验收清单](BATCH_ACCEPTANCE.md)进入。历史[干净克隆复演](CLEAN_CLONE_REHEARSAL.md)基于 `dc430c4` 和 158 项测试，只证明当时的远程 HEAD；最终候选必须按当前 168+ 基线重新复演。
+最终联合操作统一从[一次性批量验收清单](BATCH_ACCEPTANCE.md)进入；独立复核可使用 [Chat 模式验收 Prompt](CHAT_MODE_REVIEW_PROMPT.md)，桌面副本无需记录绝对路径。历史[干净克隆复演](CLEAN_CLONE_REHEARSAL.md)基于 `dc430c4` 和 158 项测试，只证明当时的远程 HEAD；最终候选必须按当前 174+ 基线重新复演。
 
 ### M0 架构和文件边界
 

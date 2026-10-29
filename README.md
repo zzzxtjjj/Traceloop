@@ -24,6 +24,7 @@ TradeLoop 是一个证据驱动的跨境业务协作工作台。V1 将供应商�
 两人分工、同步点和共同提交门槛见 [docs/TEAM_COLLABORATION.md](docs/TEAM_COLLABORATION.md)。
 更直接的逐项执行表见 [docs/两人分工执行表.md](docs/两人分工执行表.md)。
 最终一次性检查入口见 [docs/BATCH_ACCEPTANCE.md](docs/BATCH_ACCEPTANCE.md)。
+需要交给 Chat 模式做独立复核时，使用 [docs/CHAT_MODE_REVIEW_PROMPT.md](docs/CHAT_MODE_REVIEW_PROMPT.md)；如另存桌面副本，保持同名即可，无需在仓库文档记录桌面绝对路径。
 
 ## 项目结构
 
@@ -68,7 +69,7 @@ python -m ruff check core services pages scripts tests
 python -m pytest -q
 ```
 
-当前基线为 168 项测试全部通过。
+当前基线为 174 项测试全部通过。
 
 发布检查可使用以下三种本地命令；它们都绝不调用真实模型 API：
 
@@ -78,7 +79,9 @@ python scripts\verify_release.py --json
 python scripts\verify_release.py --full
 ```
 
-最终提交并推送、工作树干净且与 upstream 一致后，quick 预期为 8 pass、2 warning、0 fail；`--full` 预期为 10 pass、2 warning、0 fail，必须在最终候选上重新实测。推送前因工作树修改或分支 ahead/behind 出现 fail 属发布门禁正常工作，不能提前写成通过。两个预期 warning 分别是模型尚未配置/未 live 验证，以及海报二维码仍为占位。
+最终提交并推送、工作树干净且与 upstream 一致后，quick/JSON 预期为 9 pass、1 warning、0 fail；`--full` 预期为 11 pass、1 warning、0 fail，必须在最终候选上重新实测。推送前因工作树修改或分支 ahead/behind 出现 fail 属发布门禁正常工作，不能提前写成通过。唯一预期 warning 是模型尚未配置/未 live 验证。
+
+海报已使用可复现 SVG 二维码指向 `https://github.com/zzzxtjjj/Traceloop`。自动检查只能证明二维码结构与目标内容存在；两部手机实际扫码和仓库公开可访问仍需现场人工验收。
 
 ## 可选：模型 API 安全检查
 

@@ -4,11 +4,13 @@
 >
 > 使用方式：甲乙共同操作；只有全部强制项通过，才允许创建 `hackathon-final` 标签。
 >
-> 当前自动测试下限：168 项。后续可以增加，但不得减少或跳过失败项。
+> 当前自动测试下限：174 项。后续可以增加，但不得减少或跳过失败项。
 >
 > 当前标签状态：`hackathon-final` 禁用。先按 [发布缺口矩阵](RELEASE_GAP_MATRIX.md) 完成无需 API、真实 API（如对外宣称）和现场人工验收门禁。
 >
 > 一次性执行入口：[批量验收清单](BATCH_ACCEPTANCE.md)。
+>
+> 独立复核入口：[Chat 模式独立验收 Prompt](CHAT_MODE_REVIEW_PROMPT.md)。桌面副本可保持同名，无需记录绝对路径。
 
 ## 0. 发布原则
 
@@ -40,7 +42,7 @@ python -m pytest -q
 python -m ruff check core services pages scripts tests
 ```
 
-- [ ] `pytest` 显示不少于 168 项测试且全部通过。
+- [ ] `pytest` 显示不少于 174 项测试且全部通过。
 - [ ] Ruff 显示 `All checks passed!`。
 - [ ] CI 使用 Python 3.12，安装 `requirements.txt` 后执行相同的 pytest 和 Ruff 命令。
 - [ ] 没有通过跳过测试、删除断言或忽略规则来制造绿色结果。
@@ -62,7 +64,7 @@ streamlit run app.py
 - [ ] 每个页面刷新一次后仍可使用，不出现白屏、对象丢失或跨项目数据泄露。
 - [ ] 无权限、缺失字段、重复导入、样本不足、AI 未配置和规则降级都有可理解的提示。
 
-通过标准：168+ 测试和 Ruff 通过，全部页面逐页人工检查通过。
+通过标准：174+ 测试和 Ruff 通过，全部页面逐页人工检查通过。
 
 ### 3. 成员权限与认证边界
 
@@ -149,7 +151,8 @@ streamlit run app.py
 - [ ] 打开 `deliverables/poster/tradeloop_poster.svg`，确认 `width="800mm"`、`height="1800mm"`。
 - [ ] 最终导出文件的物理尺寸仍为 0.8 m × 1.8 m，没有被缩放成普通 A4 页面。
 - [ ] 海报包含问题、两条证据链、核心能力、安全边界和模拟数据声明。
-- [ ] 用最终仓库或演示地址替换二维码占位，并使用至少两部手机实际扫码。
+- [x] 可复现 SVG 二维码已指向 `https://github.com/zzzxtjjj/Traceloop`，自动结构与目标测试通过。
+- [ ] 使用至少两部手机实际扫码，并在未登录/无缓存环境确认仓库公开可访问。
 - [ ] 海报没有伪造产品截图、测试数字、客户名称或合作方标志。
 
 尺寸检查命令：
@@ -184,8 +187,8 @@ python -m ruff check core services pages scripts tests
 - [ ] 双方 `git status --short` 均为空。
 - [ ] 双方 `git rev-parse HEAD` 输出完全一致。
 - [ ] 准备发布的 `HEAD` 与 `origin/main` 一致。
-- [ ] 双方机器均通过 168+ 测试和 Ruff。
-- [ ] 最终推送后重新实测：quick/JSON 为 8 pass、2 warning、0 fail，`--full` 为 10 pass、2 warning、0 fail。
+- [ ] 双方机器均通过 174+ 测试和 Ruff。
+- [ ] 最终推送后重新实测：quick/JSON 为 9 pass、1 warning、0 fail，`--full` 为 11 pass、1 warning、0 fail；唯一 warning 为模型未配置。
 - [ ] 已阅读[干净克隆复演记录](CLEAN_CLONE_REHEARSAL.md)：该记录基于 `dc430c4` 和 158 项测试，最终候选已重新复演。
 - [ ] M0、M1、M2、M3 全部强制项已通过并由两人签字确认。
 - [ ] 最终交付文件已打开检查，而不是仅确认文件存在。
