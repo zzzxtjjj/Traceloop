@@ -6,4 +6,5 @@ python-dotenv>=1.0,<2
 pytest>=8,<10
 ruff>=0.9,<1
 alembic>=1.13,<2
+qrcode>=8,<9
 
