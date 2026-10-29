@@ -22,8 +22,74 @@ from services.task_service import (
     create_improvement_record,
     create_task_from_finding,
 )
+from services.traceability_service import FindingTrace, get_finding_trace
 
 REVIEW_TEMPLATE = Path(__file__).resolve().parents[1] / "data" / "demo" / "reviews_before.csv"
+
+
+def render_closed_loop_trace(trace: FindingTrace) -> None:
+    st.markdown("**闭环追踪**")
+    source_col, task_col, delivery_col, recheck_col = st.columns(4)
+    source_col.metric("原始证据", trace.evidence_status)
+    task_col.metric("改进任务", trace.task_status)
+    delivery_col.metric("交付验收", trace.delivery_status)
+    recheck_col.metric("后续复检", trace.recheck_status)
+
+    if trace.evidence:
+        st.success(f"原始评价证据 available · {len(trace.evidence)} 条")
+    else:
+        st.warning("原始评价证据 missing · 未找到可验证的原文关联。")
+
+    if trace.task is None:
+        st.warning("改进任务 missing · 当前 Finding 尚未关联任务。")
+    else:
+        task = trace.task
+        st.write(
+            f"任务 #{task.id} · {task.title} · 责任岗位：{task.owner_role} · "
+            f"状态：{task.status} · {'已发布' if task.confirmed else '草稿'}"
+        )
+        if not task.submissions:
+            st.info("交付验收 missing · 当前任务尚未提交交付材料。")
+        for submission in task.submissions:
+            with st.expander(
+                f"交付 #{submission.id} · {submission.review_status} · "
+                f"证据 #{submission.evidence_id}"
+            ):
+                st.write(submission.content)
+                st.code(submission.evidence_excerpt, language=None)
+                st.caption(f"提交岗位：{submission.submitted_by_role}")
+                if submission.review_status == "pending_review":
+                    st.info("验收 pending · 等待其他有权角色人工验收。")
+                else:
+                    st.write(f"审核人：{submission.reviewed_by or '未记录'}")
+                    st.write(f"审核意见：{submission.review_note or '未填写'}")
+
+    if trace.improvement is None:
+        st.warning("改进记录 missing · 尚未建立基线与后续复检关系。")
+        return
+
+    improvement = trace.improvement
+    st.write(
+        f"改进记录 #{improvement.id} · {improvement.status} · "
+        f"主题：{THEME_LABELS.get(improvement.theme, improvement.theme)}"
+    )
+    st.write(
+        f"基线批次 #{improvement.baseline.id} · {improvement.baseline.name} · "
+        f"{improvement.baseline_count}/{improvement.baseline.sample_size} "
+        f"({improvement.baseline_share:.1%})"
+    )
+    if improvement.followup is None:
+        st.info("后续复检 pending · 尚未关联可比较的后续评价批次。")
+    else:
+        followup_count = improvement.followup_count or 0
+        followup_share = improvement.followup_share or 0.0
+        st.write(
+            f"复检批次 #{improvement.followup.id} · {improvement.followup.name} · "
+            f"{followup_count}/{improvement.followup.sample_size} ({followup_share:.1%})"
+        )
+        if improvement.share_delta is not None:
+            st.caption(f"占比变化：{improvement.share_delta:+.1%}")
+    st.warning(improvement.limitation_note)
 
 init_db()
 st.set_page_config(page_title="差评改进 · TradeLoop", page_icon="〰️", layout="wide")
@@ -127,6 +193,17 @@ if findings:
                     f"{locator.get('csv_row', '-')} 行\n{item.excerpt}",
                     language=None,
                 )
+
+            if finding.review_status in {"accepted", "revised", "rejected"}:
+                try:
+                    trace = get_finding_trace(
+                        project_id=project_id,
+                        finding_id=finding.id,
+                    )
+                except TradeLoopError as exc:
+                    st.error(f"闭环追踪读取失败：{exc}")
+                else:
+                    render_closed_loop_trace(trace)
 
             if finding.review_status == "pending_review":
                 note = st.text_area(
