@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from core.access_ui import render_role_boundary_notice, render_user_error
 from core.db import init_db
 from core.theme import apply_brand_theme, render_footer, render_page_header
 from core.ui import render_sidebar
@@ -31,6 +32,7 @@ project_id, role = render_sidebar()
 if project_id is None:
     st.warning("请在左侧输入访问码，或先到项目首页创建项目。")
     st.stop()
+render_role_boundary_notice(role)
 
 upload_tab, score_tab = st.tabs(["1. 导入报价", "2. 比较与排名"])
 
@@ -70,7 +72,7 @@ with upload_tab:
                 artifact = import_quotes(project_id, uploaded, batch_name)
                 st.success(f"导入成功：批次 #{artifact.id}。重复文件不会重复写入。")
             except QuoteImportValidationError as exc:
-                st.error(str(exc))
+                render_user_error(exc, fallback="报价文件校验失败，请检查字段和数据格式。")
 
 with score_tab:
     artifacts = list_quote_artifacts(project_id)
@@ -180,7 +182,7 @@ with score_tab:
                     actor_role=role,
                 )
             except ValueError as exc:
-                st.error(str(exc))
+                render_user_error(exc, fallback="供应商决定无法保存，请检查输入。")
             else:
                 st.success(f"决定 #{decision.id} 已保存：{decision.human_choice}。")
 

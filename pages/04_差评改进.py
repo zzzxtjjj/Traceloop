@@ -3,6 +3,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from core.access_ui import render_role_boundary_notice, render_user_error
 from core.config import settings
 from core.db import init_db
 from core.errors import TradeLoopError
@@ -153,6 +154,7 @@ project_id, role = render_sidebar()
 if project_id is None:
     st.warning("请先进入一个项目。")
     st.stop()
+render_role_boundary_notice(role)
 
 st.info(
     "可选择可复现的关键词规则分类，或在模型已配置时运行真实 AI 分类。"
@@ -180,7 +182,7 @@ with st.expander("1 · 导入评价 CSV", expanded=not list_review_batches(proje
                 batch_name=batch_name,
             )
         except (TradeLoopError, ValueError) as exc:
-            st.error(str(exc))
+            render_user_error(exc, fallback="评价文件校验失败，请检查字段和数据格式。")
         else:
             if result.duplicate_file:
                 st.warning("该文件已导入，本次没有重复写入评价。")
@@ -227,7 +229,7 @@ if st.button("运行所选分类", type="primary"):
                 batch_id=selected_batch_id,
             )
         except (TradeLoopError, ValueError) as exc:
-            st.error(str(exc))
+            render_user_error(exc, fallback="规则分类失败，请检查评价批次。")
         else:
             st.success(
                 f"规则分类已生成 {len(summaries)} 个主题统计；重复运行不会覆盖人工审核。"
@@ -239,7 +241,7 @@ if st.button("运行所选分类", type="primary"):
                 batch_id=selected_batch_id,
             )
         except (TradeLoopError, ValueError) as exc:
-            st.error(str(exc))
+            render_user_error(exc, fallback="规则分类失败，请检查评价批次。")
         else:
             st.warning(
                 f"真实 AI 未配置，已降级为可复现规则分类并生成 {len(summaries)} 个主题统计。"
@@ -252,7 +254,7 @@ if st.button("运行所选分类", type="primary"):
                 batch_id=selected_batch_id,
             )
         except (TradeLoopError, ValueError) as exc:
-            st.error(str(exc))
+            render_user_error(exc, fallback="规则分类失败，请检查评价批次。")
         else:
             st.warning(f"已降级为规则分类并生成 {len(summaries)} 个主题统计。")
     else:
@@ -263,7 +265,7 @@ if st.button("运行所选分类", type="primary"):
             )
         except TradeLoopError as exc:
             code = getattr(exc, "code", "TRADELOOP_ERROR")
-            st.error(AI_ERROR_MESSAGES.get(code, str(exc)))
+            render_user_error(exc, fallback=AI_ERROR_MESSAGES.get(code, "模型调用失败。"))
             st.info("评价批次已保留；失败的模型输出不会写入半成品 Finding。")
             try:
                 summaries = analyze_review_batch(
@@ -271,11 +273,14 @@ if st.button("运行所选分类", type="primary"):
                     batch_id=selected_batch_id,
                 )
             except (TradeLoopError, ValueError) as fallback_exc:
-                st.error(f"规则降级也未完成：{fallback_exc}")
+                render_user_error(
+                    fallback_exc,
+                    fallback="规则降级也未完成，请检查评价批次。",
+                )
             else:
                 st.warning(f"已降级为规则分类并生成 {len(summaries)} 个主题统计。")
         except ValueError as exc:
-            st.error(f"AI 结果校验失败：{exc}")
+            render_user_error(exc, fallback="AI 结果校验失败，未写入关键业务状态。")
             st.info("评价批次已保留；无效结构不会写入关键业务状态。")
         else:
             finding_ids = read_result_value(result, "finding_ids", default=[])
@@ -296,7 +301,7 @@ else:
             batch_id=selected_batch_id,
         )
     except TradeLoopError as exc:
-        st.error(f"读取 AI 运行状态失败：{exc}")
+        render_user_error(exc, fallback="读取 AI 运行状态失败。")
     else:
         render_ai_run_summary(latest_ai_run)
 
@@ -346,7 +351,7 @@ if findings:
                         finding_id=finding.id,
                     )
                 except TradeLoopError as exc:
-                    st.error(f"闭环追踪读取失败：{exc}")
+                    render_user_error(exc, fallback="闭环追踪读取失败。")
                 else:
                     render_closed_loop_trace(trace)
 
@@ -362,14 +367,18 @@ if findings:
                 )
                 accept_col, revise_col, reject_col = st.columns(3)
                 if accept_col.button("接受", key=f"accept_{finding.id}"):
-                    review_finding(
-                        project_id=project_id,
-                        finding_id=finding.id,
-                        decision="accepted",
-                        reviewer=role,
-                        note=note,
-                    )
-                    st.rerun()
+                    try:
+                        review_finding(
+                            project_id=project_id,
+                            finding_id=finding.id,
+                            decision="accepted",
+                            reviewer=role,
+                            note=note,
+                        )
+                    except (TradeLoopError, ValueError) as exc:
+                        render_user_error(exc, fallback="Finding 接受失败，请检查审核信息。")
+                    else:
+                        st.rerun()
                 if revise_col.button("修改并接受", key=f"revise_{finding.id}"):
                     try:
                         review_finding(
@@ -380,8 +389,8 @@ if findings:
                             note=note,
                             revised_statement=revised,
                         )
-                    except ValueError as exc:
-                        st.error(str(exc))
+                    except (TradeLoopError, ValueError) as exc:
+                        render_user_error(exc, fallback="Finding 修改失败，请检查审核内容。")
                     else:
                         st.rerun()
                 if reject_col.button("驳回", key=f"reject_{finding.id}"):
@@ -393,18 +402,22 @@ if findings:
                             reviewer=role,
                             note=note,
                         )
-                    except ValueError as exc:
-                        st.error(str(exc))
+                    except (TradeLoopError, ValueError) as exc:
+                        render_user_error(exc, fallback="Finding 驳回失败，请填写审核理由。")
                     else:
                         st.rerun()
             elif finding.review_status in {"accepted", "revised"}:
                 st.success(f"已由 {finding.reviewed_by} 完成人工审核。")
                 if st.button("生成改进任务草稿", key=f"task_{finding.id}"):
-                    task = create_task_from_finding(
-                        project_id=project_id,
-                        finding_id=finding.id,
-                    )
-                    st.success(f"任务草稿 #{task.id} 已创建，尚未发布。")
+                    try:
+                        task = create_task_from_finding(
+                            project_id=project_id,
+                            finding_id=finding.id,
+                        )
+                    except (TradeLoopError, ValueError) as exc:
+                        render_user_error(exc, fallback="改进任务草稿创建失败。")
+                    else:
+                        st.success(f"任务草稿 #{task.id} 已创建，尚未发布。")
                 if st.button("确认并发布改进任务", key=f"confirm_task_{finding.id}"):
                     try:
                         task = create_task_from_finding(
@@ -424,7 +437,7 @@ if findings:
                             baseline_batch_id=selected_batch_id,
                         )
                     except (TradeLoopError, ValueError) as exc:
-                        st.error(str(exc))
+                        render_user_error(exc, fallback="改进任务无法发布，请检查验收标准。")
                     else:
                         st.success(f"任务 #{task.id} 已发布，并建立改进基线。")
 else:
@@ -461,7 +474,7 @@ if len(batches) >= 2:
                     theme=theme,
                 )
             except (TradeLoopError, ValueError) as exc:
-                st.error(str(exc))
+                render_user_error(exc, fallback="复检失败，请检查批次和主题。")
             else:
                 first, second, delta = st.columns(3)
                 first.metric(

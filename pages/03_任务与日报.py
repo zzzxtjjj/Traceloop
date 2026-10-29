@@ -2,6 +2,7 @@ import json
 
 import streamlit as st
 
+from core.access_ui import render_role_boundary_notice, render_user_error
 from core.db import init_db
 from core.errors import TradeLoopError
 from core.theme import apply_brand_theme, render_footer, render_page_header
@@ -30,7 +31,7 @@ if project_id is None:
     st.warning("请先进入一个项目。")
     st.stop()
 
-st.write(f"当前演示身份：**{role}**")
+render_role_boundary_notice(role)
 tasks = list_tasks(project_id)
 task_by_id = {task.id: task for task in tasks}
 
@@ -69,7 +70,7 @@ with task_tab:
                             actor_role=role,
                         )
                     except TradeLoopError as exc:
-                        st.error(str(exc))
+                        render_user_error(exc)
                     else:
                         st.rerun()
 
@@ -99,7 +100,7 @@ with task_tab:
                             evidence_excerpt=delivery_evidence,
                         )
                     except (TradeLoopError, ValueError) as exc:
-                        st.error(str(exc))
+                        render_user_error(exc, fallback="交付提交失败，请检查交付材料。")
                     else:
                         st.success("交付已提交；任务仍未完成，等待人工验收。")
                         st.rerun()
@@ -121,14 +122,18 @@ with task_tab:
                     key=f"submission_accept_{submission.id}",
                     disabled=not can_review,
                 ):
-                    review_task_submission(
-                        project_id=project_id,
-                        submission_id=submission.id,
-                        decision="accepted",
-                        reviewer=role,
-                        note=note,
-                    )
-                    st.rerun()
+                    try:
+                        review_task_submission(
+                            project_id=project_id,
+                            submission_id=submission.id,
+                            decision="accepted",
+                            reviewer=role,
+                            note=note,
+                        )
+                    except (TradeLoopError, ValueError) as exc:
+                        render_user_error(exc, fallback="验收操作失败，请检查审核信息。")
+                    else:
+                        st.rerun()
                 if reject_col.button(
                     "驳回补充",
                     key=f"submission_reject_{submission.id}",
@@ -142,8 +147,8 @@ with task_tab:
                             reviewer=role,
                             note=note,
                         )
-                    except ValueError as exc:
-                        st.error(str(exc))
+                    except (TradeLoopError, ValueError) as exc:
+                        render_user_error(exc, fallback="验收操作失败，请检查审核信息。")
                     else:
                         st.rerun()
 
@@ -177,7 +182,7 @@ with report_tab:
                 next_plan=next_plan,
             )
         except (TradeLoopError, ValueError) as exc:
-            st.error(str(exc))
+            render_user_error(exc, fallback="日报提交失败，请检查填写内容。")
         else:
             st.success("日报已记录；系统不会仅凭日报把任务判为完成。")
             st.rerun()

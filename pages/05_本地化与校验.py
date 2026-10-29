@@ -2,6 +2,7 @@ import difflib
 
 import streamlit as st
 
+from core.access_ui import render_role_boundary_notice, render_user_error
 from core.db import init_db
 from core.errors import RuleSourceError, TradeLoopError
 from core.theme import apply_brand_theme, render_footer, render_page_header
@@ -25,6 +26,7 @@ project_id, role = render_sidebar()
 if project_id is None:
     st.warning("请先进入一个项目。")
     st.stop()
+render_role_boundary_notice(role)
 
 version_tab, rule_tab = st.tabs(["内容版本闭环", "独立规则校验"])
 
@@ -54,7 +56,7 @@ with version_tab:
                 content=v1_content,
             )
         except (TradeLoopError, ValueError) as exc:
-            st.error(str(exc))
+            render_user_error(exc, fallback="V1 保存失败，请检查市场和内容。")
         else:
             st.success(f"V1 #{generation.id} 已保存。")
             st.rerun()
@@ -99,7 +101,7 @@ with version_tab:
                         content=v2_content,
                     )
                 except (TradeLoopError, ValueError) as exc:
-                    st.error(str(exc))
+                    render_user_error(exc, fallback="V2 保存失败，请检查反馈和内容。")
                 else:
                     st.success(
                         f"V2 #{generation.id} 已保存，parent_id 指向 V1 #{selected_v1.id}。"
@@ -181,7 +183,7 @@ with rule_tab:
                 text=content,
             )
         except (RuleSourceError, ValueError) as exc:
-            st.error(str(exc))
+            render_user_error(exc, fallback="规则检查失败，请检查输入文本。")
         else:
             for result in results:
                 heading = f"{result.rule_id} · {result.status}"
