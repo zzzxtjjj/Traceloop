@@ -22,6 +22,7 @@ PAGE = Path(__file__).resolve().parents[1] / "pages" / "04_差评改进.py"
 
 
 def _prepare_page(monkeypatch, *, configured: bool) -> AppTest:
+    user = SimpleNamespace(id=7, display_name="UI User", email="ui@example.com")
     project = SimpleNamespace(
         id=1,
         name="UI Test",
@@ -29,7 +30,13 @@ def _prepare_page(monkeypatch, *, configured: bool) -> AppTest:
         markets_json='["US", "DE"]',
     )
     batch = SimpleNamespace(id=11, name="Before", market="US", sample_size=12)
-    monkeypatch.setattr(core.ui, "list_projects", lambda: [project])
+    monkeypatch.setattr(core.ui, "list_users", lambda: [user])
+    monkeypatch.setattr(core.ui, "list_user_projects", lambda _user_id: [project])
+    monkeypatch.setattr(
+        core.ui,
+        "require_project_member",
+        lambda _project_id, _user_id: SimpleNamespace(role="owner"),
+    )
     monkeypatch.setattr(services.review_service, "list_review_batches", lambda _project_id: [batch])
     monkeypatch.setattr(
         services.review_service,
@@ -50,6 +57,7 @@ def _prepare_page(monkeypatch, *, configured: bool) -> AppTest:
         ),
     )
     app = AppTest.from_file(str(PAGE))
+    app.session_state["current_user_id"] = user.id
     app.session_state["unlocked_project_ids"] = [project.id]
     app.session_state["active_project_id"] = project.id
     return app
