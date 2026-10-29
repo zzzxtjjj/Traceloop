@@ -3,6 +3,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from core.config import settings
 from core.db import init_db
 from core.errors import TradeLoopError
 from core.theme import apply_brand_theme, render_footer, render_page_header
@@ -24,7 +25,56 @@ from services.task_service import (
 )
 from services.traceability_service import FindingTrace, get_finding_trace
 
+try:
+    from services.review_ai_service import (
+        analyze_review_batch_with_model,
+        get_latest_review_ai_run,
+    )
+except ImportError:
+    analyze_review_batch_with_model = None
+    get_latest_review_ai_run = None
+
 REVIEW_TEMPLATE = Path(__file__).resolve().parents[1] / "data" / "demo" / "reviews_before.csv"
+
+AI_ERROR_MESSAGES = {
+    "MODEL_NOT_CONFIGURED": "模型未配置，未发起外部调用。",
+    "MODEL_TIMEOUT": "模型调用超时，本次 AI 分析未写入业务结论。",
+    "MODEL_AUTH_ERROR": "模型鉴权失败，请检查 API Key。",
+    "MODEL_RATE_LIMIT": "模型调用频率受限，请稍后重试。",
+    "MODEL_PROVIDER_ERROR": "模型服务暂时不可用，请稍后重试。",
+    "MODEL_BAD_RESPONSE": "模型服务返回了无法解析的响应。",
+    "MODEL_BAD_JSON": "模型输出未通过结构校验，未写入半成品 Finding。",
+    "MODEL_EVIDENCE_INVALID": "模型引用的评价 ID 或原文片段无效，未写入 Finding。",
+    "MODEL_ANALYSIS_WRITE_FAILED": "模型结果写入失败，事务已回滚。",
+}
+
+
+def read_result_value(result, *names, default=None):
+    for name in names:
+        if isinstance(result, dict) and name in result:
+            return result[name]
+        if hasattr(result, name):
+            return getattr(result, name)
+    return default
+
+
+def render_ai_run_summary(run) -> None:
+    if run is None:
+        st.caption("当前批次还没有 AI 运行记录。")
+        return
+    run_id = read_result_value(run, "ai_run_id", "id", default="-")
+    model = read_result_value(run, "model", "model_name", default=settings.model_name or "未配置")
+    prompt_version = read_result_value(run, "prompt_version", default="-")
+    status = read_result_value(run, "status", default="unknown")
+    error_code = read_result_value(run, "error_code", default=None)
+    first, second, third, fourth = st.columns(4)
+    first.metric("AiRun ID", run_id)
+    second.metric("模型", model)
+    third.metric("Prompt 版本", prompt_version)
+    fourth.metric("运行状态", status)
+    if error_code:
+        error_message = AI_ERROR_MESSAGES.get(error_code, "模型调用失败。")
+        st.error(f"error_code：{error_code} · {error_message}")
 
 
 def render_closed_loop_trace(trace: FindingTrace) -> None:
@@ -105,8 +155,8 @@ if project_id is None:
     st.stop()
 
 st.info(
-    "当前版本默认使用可复现的关键词规则分类，不会把它冒充为 AI。"
-    "评价占比也不等同于商品实际故障率。"
+    "可选择可复现的关键词规则分类，或在模型已配置时运行真实 AI 分类。"
+    "无论使用哪种方式，评价占比都不等同于商品实际故障率，原因假设也不代表责任认定。"
 )
 
 with st.expander("1 · 导入评价 CSV", expanded=not list_review_batches(project_id)):
@@ -155,13 +205,100 @@ selected_batch_id = st.selectbox(
     format_func=lambda item: batch_labels[item],
 )
 
-if st.button("运行/查看确定性主题分析", type="primary"):
-    try:
-        summaries = analyze_review_batch(project_id=project_id, batch_id=selected_batch_id)
-    except (TradeLoopError, ValueError) as exc:
-        st.error(str(exc))
+analysis_mode = st.radio(
+    "分类方式",
+    options=["规则分类", "真实 AI 分类"],
+    horizontal=True,
+    help="规则分类可复现；AI 分类必须通过结构校验和人工审核。",
+)
+model_configured = bool(settings.model_api_key.strip() and settings.model_name.strip())
+if model_configured:
+    st.success(f"模型已配置：{settings.model_name}")
+else:
+    st.warning(
+        "模型未配置：缺少 MODEL_API_KEY 或 MODEL_NAME。选择真实 AI 时将明确降级为规则分类。"
+    )
+
+if st.button("运行所选分类", type="primary"):
+    if analysis_mode == "规则分类":
+        try:
+            summaries = analyze_review_batch(
+                project_id=project_id,
+                batch_id=selected_batch_id,
+            )
+        except (TradeLoopError, ValueError) as exc:
+            st.error(str(exc))
+        else:
+            st.success(
+                f"规则分类已生成 {len(summaries)} 个主题统计；重复运行不会覆盖人工审核。"
+            )
+    elif not model_configured:
+        try:
+            summaries = analyze_review_batch(
+                project_id=project_id,
+                batch_id=selected_batch_id,
+            )
+        except (TradeLoopError, ValueError) as exc:
+            st.error(str(exc))
+        else:
+            st.warning(
+                f"真实 AI 未配置，已降级为可复现规则分类并生成 {len(summaries)} 个主题统计。"
+            )
+    elif analyze_review_batch_with_model is None:
+        st.error("真实 AI 分析接口尚未就绪，评价批次已保留，未写入 AI Finding。")
+        try:
+            summaries = analyze_review_batch(
+                project_id=project_id,
+                batch_id=selected_batch_id,
+            )
+        except (TradeLoopError, ValueError) as exc:
+            st.error(str(exc))
+        else:
+            st.warning(f"已降级为规则分类并生成 {len(summaries)} 个主题统计。")
     else:
-        st.success(f"已生成 {len(summaries)} 个主题统计；重复运行不会覆盖人工审核。")
+        try:
+            result = analyze_review_batch_with_model(
+                project_id=project_id,
+                batch_id=selected_batch_id,
+            )
+        except TradeLoopError as exc:
+            code = getattr(exc, "code", "TRADELOOP_ERROR")
+            st.error(AI_ERROR_MESSAGES.get(code, str(exc)))
+            st.info("评价批次已保留；失败的模型输出不会写入半成品 Finding。")
+            try:
+                summaries = analyze_review_batch(
+                    project_id=project_id,
+                    batch_id=selected_batch_id,
+                )
+            except (TradeLoopError, ValueError) as fallback_exc:
+                st.error(f"规则降级也未完成：{fallback_exc}")
+            else:
+                st.warning(f"已降级为规则分类并生成 {len(summaries)} 个主题统计。")
+        except ValueError as exc:
+            st.error(f"AI 结果校验失败：{exc}")
+            st.info("评价批次已保留；无效结构不会写入关键业务状态。")
+        else:
+            finding_ids = read_result_value(result, "finding_ids", default=[])
+            status = read_result_value(result, "status", default="success")
+            st.success(
+                f"真实 AI 分类完成：状态 {status}，"
+                f"生成 {len(finding_ids)} 个待审核 Finding。"
+            )
+            render_ai_run_summary(result)
+
+st.markdown("**最近一次 AI 运行**")
+if get_latest_review_ai_run is None:
+    st.caption("AI 运行查询接口尚未就绪。规则分类仍可正常使用。")
+else:
+    try:
+        latest_ai_run = get_latest_review_ai_run(
+            project_id=project_id,
+            batch_id=selected_batch_id,
+        )
+    except TradeLoopError as exc:
+        st.error(f"读取 AI 运行状态失败：{exc}")
+    else:
+        render_ai_run_summary(latest_ai_run)
 
 findings = list_batch_findings(project_id, selected_batch_id)
 if findings:
@@ -169,12 +306,20 @@ if findings:
     for finding in findings:
         theme = finding.finding_type.rsplit(":", maxsplit=1)[-1]
         label = THEME_LABELS.get(theme, theme)
-        with st.expander(f"{label} · {finding.review_status}"):
+        classification_label = "真实 AI" if finding.model_run_id else "规则分类"
+        with st.expander(f"{label} · {classification_label} · {finding.review_status}"):
             st.write(finding.statement)
             left, middle, right = st.columns(3)
             left.metric("样本量", finding.sample_size or 0)
             middle.metric("风险状态", finding.epistemic_status)
             right.metric("人工审核", finding.review_status)
+            if finding.model_run_id:
+                st.warning(
+                    f"该 Finding 来自 AiRun #{finding.model_run_id}。模型内容是待审核的原因假设，"
+                    "不构成供应商、物流或员工责任认定。"
+                )
+            else:
+                st.caption("该 Finding 来自可复现规则分类，不代表 AI 判断。")
 
             missing = json.loads(finding.missing_info_json)
             alternatives = json.loads(finding.alternative_explanations_json)
