@@ -210,6 +210,26 @@ class ReviewClassification(BaseModel):
     alternative_explanations: list[str] = Field(default_factory=list)
 
 
+class ReviewModelClassification(BaseModel):
+    review_id: str = Field(min_length=1, max_length=100)
+    themes: list[str] = Field(min_length=1)
+    evidence_span: str = Field(min_length=1, max_length=5000)
+    confidence: float = Field(ge=0, le=1)
+    missing_info: list[str] = Field(default_factory=list)
+    alternative_explanations: list[str] = Field(default_factory=list)
+
+
+class ReviewModelBatchOutput(BaseModel):
+    classifications: list[ReviewModelClassification] = Field(min_length=1)
+
+
+class ReviewAIAnalysisResult(BaseModel):
+    ai_run_id: int
+    finding_ids: list[int]
+    prompt_version: str
+    status: Literal["success"] = "success"
+
+
 class ReviewThemeSummary(BaseModel):
     theme: str
     count: int

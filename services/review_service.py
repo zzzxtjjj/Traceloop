@@ -7,7 +7,7 @@ from typing import BinaryIO, Protocol
 
 import pandas as pd
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from core.config import settings
@@ -622,7 +622,10 @@ def list_batch_findings(
                 select(Finding)
                 .where(
                     Finding.project_id == project_id,
-                    Finding.finding_type.like(f"review_theme:{batch_id}:%"),
+                    or_(
+                        Finding.finding_type.like(f"review_theme:{batch_id}:%"),
+                        Finding.finding_type.like(f"review_ai_theme:{batch_id}:%"),
+                    ),
                 )
                 .order_by(Finding.id)
             )
