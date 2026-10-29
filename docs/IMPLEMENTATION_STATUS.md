@@ -6,7 +6,7 @@ Working branch: `integration/parallel-progress-20261029`
 
 ## Current verification baseline
 
-- `python -m pytest -q`: **158 tests passed**.
+- `python -m pytest -q`: **168 tests passed**.
 - `python -m ruff check core services pages scripts tests`: **passed**.
 - GitHub Actions workflow: `.github/workflows/ci.yml`, Python 3.12, pytest and Ruff.
 - This branch is an integration branch. The final baseline becomes official only after both people review it and merge it into `main`.
@@ -32,6 +32,7 @@ Working branch: `integration/parallel-progress-20261029`
 | Database migrations | Alembic baseline and non-destructive upgrade path for empty, legacy and repeatedly upgraded SQLite databases | Migration tests |
 | Safe permission/error UI | Shared role-boundary notice and sanitised access, model, rule and validation error rendering across sensitive pages | UI tests |
 | Demo delivery | Main-path and failure-case simulated CSV files, runbook, platform export note, third-party declaration, offline five-page pitch and 800mm × 1800mm SVG poster skeleton | File and content checks |
+| Release verification | quick, JSON and full local release checks; none can invoke live model APIs | Final pushed candidate expected quick: 8 pass, 2 warning, 0 fail; must be rerun |
 
 ## Important capability boundaries
 
@@ -50,6 +51,8 @@ Working branch: `integration/parallel-progress-20261029`
 - Rule coverage remains intentionally small. `not_covered` or “待确认” is not a compliance approval.
 - Demo quote and review files are simulated. Any trend from them demonstrates workflow behavior only.
 - The SVG poster contains a QR-code placeholder. The team must replace it with an approved final URL before submission.
+- `verify_release.py`, `--json` and `--full` are always offline. After final push and a clean upstream-aligned worktree, expected counts are quick/JSON 8 pass, 2 warning, 0 fail and full 10 pass, 2 warning, 0 fail; these counts are not yet accepted until rerun.
+- The clean-clone rehearsal at HEAD `dc430c4` passed 158 tests; it is historical evidence only. The final candidate must be cloned and rerun with the current 168+ baseline. See [CLEAN_CLONE_REHEARSAL.md](CLEAN_CLONE_REHEARSAL.md) and [BATCH_ACCEPTANCE.md](BATCH_ACCEPTANCE.md).
 
 ## Not implemented or not yet verified
 
@@ -62,6 +65,6 @@ Working branch: `integration/parallel-progress-20261029`
 
 ## Test scope
 
-The 158-test baseline covers quote-field failures, mixed currency, duplicate reviews, structured-model failures, provider HTTP errors, model readiness and input budgets, model evidence-reference validation, packaging damage without batch data, unproven supplier association, cross-module traceability, missing evidence, task completion gates, different sample sizes, rule-source checks, localization version persistence, cross-project access, membership access matrices, Alembic migration safety, sanitised permission/error UI and two end-to-end workflows.
+The 168-test baseline covers quote-field failures, mixed currency, duplicate reviews, structured-model failures, provider HTTP errors, model readiness and input budgets, release verification, model evidence-reference validation, packaging damage without batch data, unproven supplier association, cross-module traceability, missing evidence, task completion gates, different sample sizes, rule-source checks, localization version persistence, cross-project access, membership access matrices, Alembic migration safety, sanitised permission/error UI and two end-to-end workflows.
 
 Tests prove deterministic code paths in the repository. They do not prove a real model provider, production identity system, production deployment or legal compliance.

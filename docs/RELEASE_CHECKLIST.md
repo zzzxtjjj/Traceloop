@@ -4,9 +4,11 @@
 >
 > 使用方式：甲乙共同操作；只有全部强制项通过，才允许创建 `hackathon-final` 标签。
 >
-> 当前自动测试下限：158 项。后续可以增加，但不得减少或跳过失败项。
+> 当前自动测试下限：168 项。后续可以增加，但不得减少或跳过失败项。
 >
 > 当前标签状态：`hackathon-final` 禁用。先按 [发布缺口矩阵](RELEASE_GAP_MATRIX.md) 完成无需 API、真实 API（如对外宣称）和现场人工验收门禁。
+>
+> 一次性执行入口：[批量验收清单](BATCH_ACCEPTANCE.md)。
 
 ## 0. 发布原则
 
@@ -38,7 +40,7 @@ python -m pytest -q
 python -m ruff check core services pages scripts tests
 ```
 
-- [ ] `pytest` 显示不少于 158 项测试且全部通过。
+- [ ] `pytest` 显示不少于 168 项测试且全部通过。
 - [ ] Ruff 显示 `All checks passed!`。
 - [ ] CI 使用 Python 3.12，安装 `requirements.txt` 后执行相同的 pytest 和 Ruff 命令。
 - [ ] 没有通过跳过测试、删除断言或忽略规则来制造绿色结果。
@@ -60,7 +62,7 @@ streamlit run app.py
 - [ ] 每个页面刷新一次后仍可使用，不出现白屏、对象丢失或跨项目数据泄露。
 - [ ] 无权限、缺失字段、重复导入、样本不足、AI 未配置和规则降级都有可理解的提示。
 
-通过标准：158+ 测试和 Ruff 通过，全部页面逐页人工检查通过。
+通过标准：168+ 测试和 Ruff 通过，全部页面逐页人工检查通过。
 
 ### 3. 成员权限与认证边界
 
@@ -182,7 +184,9 @@ python -m ruff check core services pages scripts tests
 - [ ] 双方 `git status --short` 均为空。
 - [ ] 双方 `git rev-parse HEAD` 输出完全一致。
 - [ ] 准备发布的 `HEAD` 与 `origin/main` 一致。
-- [ ] 双方机器均通过 158+ 测试和 Ruff。
+- [ ] 双方机器均通过 168+ 测试和 Ruff。
+- [ ] 最终推送后重新实测：quick/JSON 为 8 pass、2 warning、0 fail，`--full` 为 10 pass、2 warning、0 fail。
+- [ ] 已阅读[干净克隆复演记录](CLEAN_CLONE_REHEARSAL.md)：该记录基于 `dc430c4` 和 158 项测试，最终候选已重新复演。
 - [ ] M0、M1、M2、M3 全部强制项已通过并由两人签字确认。
 - [ ] 最终交付文件已打开检查，而不是仅确认文件存在。
 

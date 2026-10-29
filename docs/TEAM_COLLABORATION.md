@@ -13,7 +13,7 @@ integration/parallel-progress-20261029
 当前验证结果：
 
 ```text
-158 tests passed
+168 tests passed
 Ruff passed
 ```
 
@@ -96,6 +96,7 @@ git rev-parse HEAD
 - 正确访问码不授予成员资格；非成员仍会被 `require_project_member` 拒绝。
 - 模型输入字符数/评价数预算和 `MODEL_MAX_ATTEMPTS=1` 默认单次请求策略。
 - 默认离线模型配置检查；截至本轮未配置环境的状态为未配置且未 live 验证。
+- 离线发布检查 quick、`--json`、`--full`；最终推送后预期 quick/JSON 为 8 pass、2 warning、0 fail，full 为 10 pass、2 warning、0 fail，必须重新实测。
 
 ## 4. 仍未完成或必须继续验证
 
@@ -164,6 +165,8 @@ git rev-parse HEAD
 - [ ] 新电脑从 clone 到启动不超过十分钟。
 
 ## 5. 共同同步点
+
+最终联合操作统一从[一次性批量验收清单](BATCH_ACCEPTANCE.md)进入。历史[干净克隆复演](CLEAN_CLONE_REHEARSAL.md)基于 `dc430c4` 和 158 项测试，只证明当时的远程 HEAD；最终候选必须按当前 168+ 基线重新复演。
 
 ### M0 架构和文件边界
 

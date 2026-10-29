@@ -23,6 +23,7 @@ TradeLoop 是一个证据驱动的跨境业务协作工作台。V1 将供应商�
 详细完成度与限制见 [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)。
 两人分工、同步点和共同提交门槛见 [docs/TEAM_COLLABORATION.md](docs/TEAM_COLLABORATION.md)。
 更直接的逐项执行表见 [docs/两人分工执行表.md](docs/两人分工执行表.md)。
+最终一次性检查入口见 [docs/BATCH_ACCEPTANCE.md](docs/BATCH_ACCEPTANCE.md)。
 
 ## 项目结构
 
@@ -67,7 +68,17 @@ python -m ruff check core services pages scripts tests
 python -m pytest -q
 ```
 
-当前基线为 158 项测试全部通过。
+当前基线为 168 项测试全部通过。
+
+发布检查可使用以下三种本地命令；它们都绝不调用真实模型 API：
+
+```powershell
+python scripts\verify_release.py
+python scripts\verify_release.py --json
+python scripts\verify_release.py --full
+```
+
+最终提交并推送、工作树干净且与 upstream 一致后，quick 预期为 8 pass、2 warning、0 fail；`--full` 预期为 10 pass、2 warning、0 fail，必须在最终候选上重新实测。推送前因工作树修改或分支 ahead/behind 出现 fail 属发布门禁正常工作，不能提前写成通过。两个预期 warning 分别是模型尚未配置/未 live 验证，以及海报二维码仍为占位。
 
 ## 可选：模型 API 安全检查
 
