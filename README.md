@@ -18,7 +18,7 @@ TradeLoop 是一个证据驱动的跨境业务协作工作台。V1 将供应商�
 - 日报关联任务；阻塞、逾期、缺日报和缺验收证据的确定性复盘。
 - 基线/后续评价同口径比较，并明确“评价占比不是实际故障率、变化不证明因果”。
 - 美国/德国规则检查，区分平台政策、消费者信息规则和内部采购标准，保存来源与版本。
-- AI 结构化输出验证、一次修复重试、超时和无效 JSON 错误处理（真实模型供应商尚未配置）。
+- AI 结构化输出验证、默认单次请求、仅在 `MODEL_MAX_ATTEMPTS=2` 时允许一次修复，以及超时和无效 JSON 错误处理（真实模型供应商尚未配置）。
 
 详细完成度与限制见 [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)。
 两人分工、同步点和共同提交门槛见 [docs/TEAM_COLLABORATION.md](docs/TEAM_COLLABORATION.md)。
@@ -67,7 +67,19 @@ python -m ruff check core services pages scripts tests
 python -m pytest -q
 ```
 
-当前基线为 133 项测试全部通过。
+当前基线为 158 项测试全部通过。
+
+## 可选：模型 API 安全检查
+
+模型 API 不是本地启动的前置条件。配置和检查说明见 [docs/MODEL_API_SETUP.md](docs/MODEL_API_SETUP.md)。默认只运行离线检查：
+
+```powershell
+python scripts\check_model_api.py
+```
+
+截至本轮未配置环境，实际离线结果为 `configured=false`、`live_verified=false`，缺少 `MODEL_API_KEY` 和 `MODEL_NAME`；命令返回码为 `1`。这是配置前的安全默认状态，不是系统故障，应用仍使用规则降级和人工审核。用户以后填写配置后，应以新一次离线检查输出为准。
+
+系统已经实现输入预算限制；`MODEL_MAX_ATTEMPTS` 默认值为 `1`，不会自动发送结构修复请求。项目绝不自动运行 `python scripts\check_model_api.py --live`；只有用户提供真实配置并明确允许一次联网请求后，操作者才能手动执行。
 
 ## 两条核心验收工作流
 

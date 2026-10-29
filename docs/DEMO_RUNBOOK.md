@@ -25,11 +25,23 @@ streamlit run app.py
 开始路演前逐项确认：
 
 - [ ] `git status --short` 没有意外修改。
-- [ ] 至少 133 项测试和 Ruff 均通过。
+- [ ] 至少 158 项测试和 Ruff 均通过。
 - [ ] 首页、项目首页、报价决策、任务与日报、差评改进、本地化与校验均可打开。
 - [ ] 演示项目可以使用 `demo2026` 进入。
 - [ ] 浏览器缩放、投影分辨率和网络状态已确认。
 - [ ] 已准备离线规则降级说明，不把模型未配置说成模型成功。
+
+### 可选模型状态检查
+
+模型检查不是启动前置条件。配置说明见 [模型 API 本地配置与安全检查](MODEL_API_SETUP.md)。默认只允许离线检查：
+
+```powershell
+python scripts\check_model_api.py
+```
+
+截至本轮未配置环境，实际输出为 `configured=false`、`live_verified=false`、`missing=MODEL_API_KEY,MODEL_NAME`，退出码为 `1`。这是配置前的预期状态，不是演示故障；以后填写配置后以新一次检查输出为准。输入字符数和单次评价数预算已经启用，`MODEL_MAX_ATTEMPTS` 默认是 `1`。
+
+不得在启动脚本、演示脚本或自动测试中加入 `--live`。只有用户提供真实配置并明确允许一次联网测试后，操作者才可手动运行 `python scripts\check_model_api.py --live`。
 
 ## 2. 三分钟主演示路线
 

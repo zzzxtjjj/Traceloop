@@ -6,7 +6,7 @@ Working branch: `integration/parallel-progress-20261029`
 
 ## Current verification baseline
 
-- `python -m pytest -q`: **133 tests passed**.
+- `python -m pytest -q`: **158 tests passed**.
 - `python -m ruff check core services pages scripts tests`: **passed**.
 - GitHub Actions workflow: `.github/workflows/ci.yml`, Python 3.12, pytest and Ruff.
 - This branch is an integration branch. The final baseline becomes official only after both people review it and merge it into `main`.
@@ -16,8 +16,9 @@ Working branch: `integration/parallel-progress-20261029`
 | Area | Current minimum implementation | Verification |
 |---|---|---|
 | Shared evidence foundation | BusinessObject, Evidence, Finding, source locators, dedupe and project ownership checks | Unit tests |
-| Structured model boundary | Pydantic validation, one repair retry, timeout/error state and invalid-output rejection | Unit tests with fake providers |
-| Model provider adapter | OpenAI-compatible request adapter, environment configuration and HTTP error mapping | Unit tests with fake HTTP responses; no live provider claim |
+| Structured model boundary | Pydantic validation, default one attempt; optional one repair only when `MODEL_MAX_ATTEMPTS=2`, plus timeout/error state and invalid-output rejection | Unit tests with fake providers |
+| Model provider adapter | OpenAI-compatible request adapter, environment configuration, input budgets, default one-attempt policy and HTTP error mapping | Unit tests with fake HTTP responses; no live provider claim |
+| Model readiness | Offline configuration check and opt-in single-request live check | Offline check currently reports unconfigured; live check has not run |
 | Supplier quotes | CSV validation, mixed-currency rejection, deterministic scoring, source Evidence, clarification questions and human decision | Unit and workflow tests |
 | Review evidence chain | Import metadata, review-ID dedupe, rule classification, deterministic statistics, source excerpts and human review | Unit and workflow tests |
 | Cross-module traceability | Finding to source Evidence, task, delivery review, improvement record and follow-up batch; missing links remain explicit | Traceability workflow tests |
@@ -35,6 +36,9 @@ Working branch: `integration/parallel-progress-20261029`
 ## Important capability boundaries
 
 - The repository contains an OpenAI-compatible provider adapter, but the team has **not verified a real online model call** on this branch. A configured API key, an actual sandbox/live call and evidence-reference validation are still required before the team can say “real AI is working”.
+- In this round's unconfigured environment, the offline check reports `configured=false`, `live_verified=false` and missing `MODEL_API_KEY,MODEL_NAME`, then exits with code `1`. This is the expected pre-configuration state, not an application fault.
+- Input character/review budgets are enforced and `MODEL_MAX_ATTEMPTS` defaults to `1`. The project never runs `check_model_api.py --live` automatically; live verification requires explicit user permission.
+- Local setup and safe-check instructions are in [MODEL_API_SETUP.md](MODEL_API_SETUP.md).
 - When no model is configured, review analysis uses a transparent rule-based baseline. The UI must not label that result as AI.
 - User and ProjectMember persistence, member-scoped project listing and owner-only member addition are implemented. A valid access code does not make a non-member a project member.
 - The local user selector is an explicit hackathon identity context, not login authentication. Passing a user ID through service calls is not a production session or trusted identity boundary.
@@ -58,6 +62,6 @@ Working branch: `integration/parallel-progress-20261029`
 
 ## Test scope
 
-The 133-test baseline covers quote-field failures, mixed currency, duplicate reviews, structured-model failures, provider HTTP errors, model evidence-reference validation, packaging damage without batch data, unproven supplier association, cross-module traceability, missing evidence, task completion gates, different sample sizes, rule-source checks, localization version persistence, cross-project access, membership access matrices, Alembic migration safety, sanitised permission/error UI and two end-to-end workflows.
+The 158-test baseline covers quote-field failures, mixed currency, duplicate reviews, structured-model failures, provider HTTP errors, model readiness and input budgets, model evidence-reference validation, packaging damage without batch data, unproven supplier association, cross-module traceability, missing evidence, task completion gates, different sample sizes, rule-source checks, localization version persistence, cross-project access, membership access matrices, Alembic migration safety, sanitised permission/error UI and two end-to-end workflows.
 
 Tests prove deterministic code paths in the repository. They do not prove a real model provider, production identity system, production deployment or legal compliance.

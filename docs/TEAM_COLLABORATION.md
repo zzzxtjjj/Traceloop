@@ -13,7 +13,7 @@ integration/parallel-progress-20261029
 当前验证结果：
 
 ```text
-133 tests passed
+158 tests passed
 Ruff passed
 ```
 
@@ -94,6 +94,8 @@ git rev-parse HEAD
 - 统一安全权限/异常 UI，敏感页面使用一致的角色边界提示和脱敏错误信息。
 - User/ProjectMember 持久化、成员项目列表隔离、负责人添加成员和停用状态拒绝。
 - 正确访问码不授予成员资格；非成员仍会被 `require_project_member` 拒绝。
+- 模型输入字符数/评价数预算和 `MODEL_MAX_ATTEMPTS=1` 默认单次请求策略。
+- 默认离线模型配置检查；截至本轮未配置环境的状态为未配置且未 live 验证。
 
 ## 4. 仍未完成或必须继续验证
 
@@ -102,6 +104,10 @@ git rev-parse HEAD
 负责人：甲为主，乙验收页面。
 
 当前状态：模型适配器和模拟 HTTP 测试已完成；真实联网调用尚未验证。
+
+先阅读 [模型 API 本地配置与安全检查](MODEL_API_SETUP.md)。默认运行 `python scripts\check_model_api.py` 只做离线检查；截至本轮未配置环境，实际结果为 `configured=false`、`live_verified=false`、缺少 `MODEL_API_KEY,MODEL_NAME`，退出码 `1` 属配置前预期状态，不是故障，以后应以新一次检查为准。输入预算已启用，`MODEL_MAX_ATTEMPTS` 默认 `1`。
+
+启动、CI、测试和演示流程绝不自动运行 `--live`。只有用户提供真实配置并明确允许一次 live 请求后，操作者才可手动执行。
 
 完成条件：
 

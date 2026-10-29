@@ -4,7 +4,7 @@
 >
 > 使用方式：甲乙共同操作；只有全部强制项通过，才允许创建 `hackathon-final` 标签。
 >
-> 当前自动测试下限：133 项。后续可以增加，但不得减少或跳过失败项。
+> 当前自动测试下限：158 项。后续可以增加，但不得减少或跳过失败项。
 >
 > 当前标签状态：`hackathon-final` 禁用。先按 [发布缺口矩阵](RELEASE_GAP_MATRIX.md) 完成无需 API、真实 API（如对外宣称）和现场人工验收门禁。
 
@@ -38,7 +38,7 @@ python -m pytest -q
 python -m ruff check core services pages scripts tests
 ```
 
-- [ ] `pytest` 显示不少于 133 项测试且全部通过。
+- [ ] `pytest` 显示不少于 158 项测试且全部通过。
 - [ ] Ruff 显示 `All checks passed!`。
 - [ ] CI 使用 Python 3.12，安装 `requirements.txt` 后执行相同的 pytest 和 Ruff 命令。
 - [ ] 没有通过跳过测试、删除断言或忽略规则来制造绿色结果。
@@ -60,7 +60,7 @@ streamlit run app.py
 - [ ] 每个页面刷新一次后仍可使用，不出现白屏、对象丢失或跨项目数据泄露。
 - [ ] 无权限、缺失字段、重复导入、样本不足、AI 未配置和规则降级都有可理解的提示。
 
-通过标准：133+ 测试和 Ruff 通过，全部页面逐页人工检查通过。
+通过标准：158+ 测试和 Ruff 通过，全部页面逐页人工检查通过。
 
 ### 3. 成员权限与认证边界
 
@@ -98,6 +98,11 @@ streamlit run app.py
 
 ### 真实模型联网与降级状态
 
+- [ ] 已阅读 [模型 API 本地配置与安全检查](MODEL_API_SETUP.md)。
+- [ ] 默认离线命令 `python scripts\check_model_api.py` 不发起外部请求。
+- [ ] 截至本轮未配置环境的离线结果已记录：`configured=false`、`live_verified=false`、缺少 `MODEL_API_KEY,MODEL_NAME`，退出码 `1` 属配置前预期状态，不算故障；以后以新一次检查为准。
+- [ ] 输入字符数与评价数预算已启用，`MODEL_MAX_ATTEMPTS` 默认值为 `1`。
+- [ ] 启动、CI 和演示流程绝不自动运行 `--live`；只有用户明确授权后才由操作者手动运行一次。
 - [ ] 记录本次是否实际完成真实模型联网验证：`已验证 / 未验证`。
 - [ ] 若已验证：仅使用脱敏小样本，记录模型名称、Prompt 版本、耗时和结果状态，不记录密钥。
 - [ ] 若未验证：页面和路演明确说明当前仅验证了适配器、结构校验和模拟 HTTP 测试。
@@ -177,7 +182,7 @@ python -m ruff check core services pages scripts tests
 - [ ] 双方 `git status --short` 均为空。
 - [ ] 双方 `git rev-parse HEAD` 输出完全一致。
 - [ ] 准备发布的 `HEAD` 与 `origin/main` 一致。
-- [ ] 双方机器均通过 133+ 测试和 Ruff。
+- [ ] 双方机器均通过 158+ 测试和 Ruff。
 - [ ] M0、M1、M2、M3 全部强制项已通过并由两人签字确认。
 - [ ] 最终交付文件已打开检查，而不是仅确认文件存在。
 
