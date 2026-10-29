@@ -1,224 +1,180 @@
 # TradeLoop 两人协作、验收与同步清单
 
-Updated: 2026-10-25
+Updated: 2026-10-29
 
-## 1. 当前共同基线
+## 1. 当前集成基线
 
-两人开始并行开发前，必须都基于以下主分支提交：
+当前共同检查分支：
 
 ```text
-ccb3882 feat: implement evidence-driven business loops
+integration/parallel-progress-20261029
 ```
 
-该基线已经完成：证据底座、报价追溯、差评证据链、任务交付与人工验收、日报风险复盘、
-规则来源校验、两条端到端测试、README 和模拟演示数据。
+当前验证结果：
 
-任何人开始工作前先执行：
+```text
+92 tests passed
+Ruff passed
+```
+
+这只是集成分支基线。双方完成代码审查、页面验收和文档核对后，才将它合并到 `main`。两台电脑必须以合并后的同一个 `main` 提交哈希开始下一阶段。
+
+同步和检查命令：
 
 ```powershell
-git checkout main
-git pull --ff-only origin main
+git fetch origin
+git checkout integration/parallel-progress-20261029
+git pull --ff-only
 python -m pytest -q
 python -m ruff check core services pages scripts tests
+git rev-parse HEAD
 ```
 
-预期基线结果：44 个测试通过，Ruff 无错误。若基线不通过，不要继续叠加功能，先在群里同步错误。
+## 2. 文件所有权
 
-## 2. 分工原则
+### 甲负责后端和数据正确性
 
-- 甲负责“数据正确性与服务层”，乙负责“用户工作流与演示交付”。
-- 同一时段不要同时修改同一个文件；确需修改时，先在群里声明文件和预计结束时间。
-- SQLite 数据库、`.env` 和上传文件不共享；代码、测试、规则定义和模拟 CSV 通过 GitHub 共享。
-- 每个小提交必须只包含一个可解释的变化，并附相应测试。
-- 两人都不得在业务代码、提交信息、截图或文档中写入真实 API Key、真实访问码或客户数据。
+甲负责：
 
-## 3. 甲：后端、证据与安全负责人
-
-建议分支：`feature/backend-ai-access`
-
-### A1. 真实模型提供器（优先）
-
-主要文件：
-
-- `services/ai_service.py`
-- 新增 `services/model_provider.py`
-- `core/config.py`
-- `prompts/review_classify_v1.txt`
-- `tests/test_ai_service.py`
-- 新增 `tests/test_model_provider.py`
-
-具体任务：
-
-- 只从环境变量读取 API Key、模型名、超时和基础 URL。
-- 将模型响应送入已有 Pydantic Schema；禁止绕过 `run_structured_model`。
-- 超时、网络错误、无效 JSON、缺字段分别返回可理解错误。
-- 保留 AiRun 的成功/失败、输入哈希、模型名、Prompt 版本和延迟。
-- 评价分类只返回主题、评价 ID、原文连续片段、置信度、缺失信息和替代解释。
-- 模型不得返回统计总数作为最终事实；数量和占比继续由程序聚合。
-- 没有 API Key 时继续使用明确标记的 rule-based 降级，不伪装为 AI。
-
-完成标准：
-
-- 假模型单元测试覆盖成功、修复重试、超时和永久无效结构。
-- 至少用一份模拟评价 CSV 跑通真实/沙盒模型；输出中的评价 ID 和原文片段均能校验。
-- Key 不出现在 `git diff`、日志或截图中。
-
-完成 A1 后先提交：
-
-```powershell
-git add services/ai_service.py services/model_provider.py core/config.py prompts tests
-git commit -m "feat: connect validated structured model provider"
-git push -u origin feature/backend-ai-access
-```
-
-### A2. 数据库迁移与旧数据兼容
-
-主要文件：
-
-- 新增迁移目录和配置（建议 Alembic）
-- `core/db.py`
-- `core/models.py`
-- 新增迁移测试
-
-具体任务：
-
-- 为当前新增表生成初始迁移，不删除现有 SQLite 数据。
-- 在空数据库和已有第一阶段数据库上分别执行升级测试。
-- 给迁移失败提供备份提示，不在脚本中自动删除数据库。
-- 记录迁移版本；启动时不要静默假装数据库已升级。
-
-完成标准：空库升级、旧库升级、重复升级三种测试均通过。
-
-完成 A2 后提交：
-
-```powershell
-git add core migrations tests
-git commit -m "feat: add additive database migrations"
-git push
-```
-
-### A3. 真实成员与项目权限最小版
-
-主要文件：
-
-- `core/models.py`
-- `services/project_access.py`
-- `services/project_service.py`
-- 新增权限测试
-
-具体任务：
-
-- 增加 User、ProjectMember 或等价最小模型。
-- 区分查看、执行、审核、项目管理权限。
-- 所有按 ID 获取 Artifact、Evidence、Finding、Task、ReviewBatch 的服务都校验项目成员关系。
-- 访问码只负责加入/解锁项目，不直接等于负责人权限。
-- URL、文件 ID 或 Artifact ID 不能绕过项目权限。
-
-完成标准：跨项目读取、越权审核、越权任务发布和猜测 ID 均有失败测试。
-
-## 4. 乙：页面、演示与产品交付负责人
-
-建议分支：`feature/ui-demo-polish`
-
-### B1. AI 结果页面接入
-
-主要文件：
-
-- `pages/04_差评改进.py`
-- `pages/05_本地化与校验.py`
-- 必要时新增 UI 辅助函数，但不要修改甲正在改的 provider 文件
-
-具体任务：
-
-- 在差评页明确显示分类方式：真实模型、规则降级或失败。
-- 显示模型运行 ID、Prompt 版本、证据引用、缺失信息和人工审核状态。
-- 模型失败时保留原批次，不写入半成品 Finding，并提供重试入口。
-- 本地化页接入英/德 V1、用户反馈、V2 和版本差异；版本内容必须持久化到 Generation。
-- 规则校验仍调用程序逻辑，不允许模型直接给“合规通过”。
-
-完成标准：无 Key、模型成功、模型失败三种页面状态均可演示；页面用语不夸大能力。
-
-完成 B1 后提交：
-
-```powershell
-git add pages core/theme.py tests
-git commit -m "feat: expose reviewed AI workflow in Streamlit"
-git push -u origin feature/ui-demo-polish
-```
-
-### B2. 演示数据与路演脚本
-
-主要文件：
-
-- `data/demo/`
+- `core/`
+- `services/`
 - `scripts/seed_demo.py`
-- 新增 `docs/DEMO_RUNBOOK.md`
+- 服务层和端到端测试
+- 数据库结构、未来迁移和项目访问边界
+- 模型提供器、结构化输出校验和错误处理
+- 跨模块证据链查询
+
+甲的结果标准：算得对、存得住、查得回、失败不污染、不能跨项目越权。
+
+### 乙负责页面和演示交付
+
+乙负责：
+
+- `pages/`
+- `data/demo/`
+- 页面测试和演示流程测试
+- `docs/DEMO_RUNBOOK.md`
+- `docs/THIRD_PARTY_COMPONENTS.md`
+- `docs/PLATFORM_EXPORT.md`
+- `deliverables/`
+
+乙的结果标准：看得懂、点得通、错误有提示、模拟数据标记清楚、现场能够恢复。
+
+### 共同文件
+
+以下文件必须先在聊天中声明再修改，不能两人同时编辑：
+
 - `README.md`
-
-具体任务：
-
-- 明确标注所有模拟数据，不混入真实客户、员工或供应商敏感信息。
-- 准备一份正常报价、一份缺字段报价、一份混合币种报价。
-- 准备改进前/后评价、重复评价、缺生产批次评价。
-- 写 8–10 分钟演示台词：报价证据链约 3 分钟，差评改进闭环约 4 分钟，限制说明约 1 分钟。
-- 给每个页面准备失败演示和恢复步骤。
-
-完成标准：在全新临时数据库执行 `seed_demo.py` 后，两条工作流无需手工改库即可演示。
-
-### B3. 验收体验和交付清单
-
-主要文件：
-
-- 页面文案和布局
+- `requirements.txt`
+- `core/models.py`
+- `core/schemas.py`
+- `core/config.py`
 - `docs/IMPLEMENTATION_STATUS.md`
-- `README.md`
+- `docs/TEAM_COLLABORATION.md`
+- `docs/两人分工执行表.md`
 
-具体任务：
+`scripts/seed_demo.py` 归甲维护。乙只维护 `data/demo/`，如模拟数据要求脚本变化，应把数据文件、预期导入结果和错误信息发给甲。
 
-- 统一状态中文：草稿、待执行、执行中、被阻塞、待验收、已完成。
-- 每个危险或不可逆操作增加说明；导入、审核、发布和验收成功后给清晰反馈。
-- 检查小屏幕、空数据、重复点击和页面刷新。
-- 维护已完成/未完成/模拟数据/真实能力四类交付说明。
+## 3. 当前已完成能力
 
-## 5. 两人共同完成的里程碑与 commit 门槛
+双方不要重复开发以下内容：
 
-“一起 commit”不是两人同时编辑一个提交，而是：各自在功能分支完成小提交，达到共同门槛后再把
-两个分支合并到 `main`，形成双方都验收过的同步点。
+- 报价 CSV 校验、混合币种阻止、确定性比较、原始字段 Evidence、风险 Finding 和人工供应商决定。
+- 评价导入、评价 ID 去重、批次元数据、程序统计、原文 Evidence 和人工 Finding 审核。
+- Finding 转任务草稿、人工发布、交付 Evidence、接受或驳回验收。
+- 日报、阻塞、逾期和缺材料提醒。
+- 改进前后批次同口径比较，并显示样本量和非因果限制。
+- Finding 到原始 Evidence、任务、交付审核、改进记录和后续复检的跨模块查询。
+- US/DE V1、反馈、V2、父版本和规则结果持久化。
+- OpenAI-compatible 模型适配器、结构校验和 401/429/5xx/超时错误映射的模拟测试。
+- 正常和异常模拟 CSV、演示运行手册、平台配置说明、第三方组件声明。
+- 五页离线路演 HTML 和 800mm × 1800mm SVG 海报骨架。
+- Python 3.12 GitHub Actions，自动运行 pytest 和 Ruff。
 
-### 同步点 M1：真实 AI 最小闭环
+## 4. 仍未完成或必须继续验证
 
-甲完成 A1，乙完成 B1 后，双方共同执行：
+### A1 真实模型现场验证
 
-- 一条评价能由模型返回结构化分类。
-- 评价 ID 和原文片段校验通过。
-- 程序统计与分类明细数量一致。
-- 模型失败不产生关键业务状态。
-- 人工可以接受、修改或驳回 Finding。
+负责人：甲为主，乙验收页面。
 
-两人都签字确认后合并 PR，并在 `main` 产生里程碑提交：
+当前状态：模型适配器和模拟 HTTP 测试已完成；真实联网调用尚未验证。
 
-```text
-feat: complete reviewed AI analysis milestone
-```
+完成条件：
 
-### 同步点 M2：身份和数据库兼容
+- [ ] 密钥只存在于本机或部署 Secret。
+- [ ] 真实或官方沙盒调用返回结构化结果。
+- [ ] 返回的评价 ID 和原文连续片段通过本地校验。
+- [ ] 超时、401、429 和服务端错误有明确页面反馈。
+- [ ] 模型失败不写入 Finding。
+- [ ] 页面准确显示真实模型、规则降级或失败，不能混淆。
 
-甲完成 A2/A3，乙完成 B3 中的登录、越权和空数据页面验收后，共同执行：
+未完成这些检查前，不得在 README、海报或路演中说“真实 AI 已上线”。
 
-- 旧数据库可升级且记录不丢失。
-- 用户只能查看所属项目。
-- 普通岗位不能发布任务或验收自己的交付。
-- 猜测文件、批次、任务 ID 无法跨项目读取。
+### A2 版本化数据库迁移
 
-共同合并后的里程碑提交：
+负责人：甲。
 
-```text
-feat: complete project membership and migration milestone
-```
+当前状态：未实现。当前本地演示使用 SQLAlchemy `create_all`。
 
-### 同步点 M3：黑客松交付冻结
+完成条件：空数据库、旧数据库和重复升级均有测试；迁移不自动删除数据；失败时提示备份和版本位置。
 
-两人停止加功能，只做以下共同检查：
+### A3 真实成员和项目权限
+
+负责人：甲负责后端，乙负责权限和异常页面。
+
+当前状态：已有项目归属检查和访问码页面，尚无真实 User/ProjectMember 身份和企业级 RBAC。
+
+完成条件：真实成员身份、项目角色和服务端授权存在；非成员、普通成员、提交人自验和对象 ID 猜测均有失败测试；页面不泄露其他项目内容。
+
+### B4 最终页面和异常验收
+
+负责人：乙。
+
+完成条件：
+
+- [ ] 访问码错误与权限不足使用不同文案。
+- [ ] 模型未配置、失败和规则降级可区分。
+- [ ] 缺订单、批次、供应商关联时明确显示缺失。
+- [ ] 空数据、重复点击、刷新和窄窗口均可操作。
+- [ ] 页面隐藏按钮以外，后端仍拒绝未授权操作。
+
+### B5 最终交付
+
+负责人：乙准备，甲核对技术真实性。
+
+完成条件：
+
+- [ ] 在最终代码上连续完成三次三分钟路演。
+- [ ] 替换海报二维码占位。
+- [ ] 按主办方规格导出 800mm × 1800mm 海报。
+- [ ] README、实施状态、运行手册、路演和页面描述一致。
+- [ ] 新电脑从 clone 到启动不超过十分钟。
+
+## 5. 共同同步点
+
+### M0 架构和文件边界
+
+进入条件：双方阅读当前架构、实施状态和本清单。
+
+通过条件：能够共同描述完整链路：问题产生、原始证据、人工确认、任务、交付验收和后续复检；文件所有权没有冲突。
+
+### M1 模型闭环
+
+进入条件：甲完成真实模型验证，乙完成页面状态验收。
+
+通过条件：真实调用、证据引用、本地统计、失败安全和人工审核全部通过。只有这一步完成后才能更新“真实 AI”对外表述。
+
+### M2 数据库和成员权限
+
+进入条件：版本化迁移和真实成员最小版完成。
+
+通过条件：空库、旧库、重复升级、跨项目读取、越权发布、提交人自验和对象 ID 猜测全部通过。
+
+### M3 最终交付冻结
+
+进入条件：两条工作流、异常演示、交付材料和能力边界均完成。
+
+共同执行：
 
 ```powershell
 git checkout main
@@ -229,27 +185,27 @@ python -m ruff check core services pages scripts tests
 streamlit run app.py
 ```
 
-共同手工验收：
+共同验收：
 
-- 报价 → Evidence/Finding → 人工 Decision → Task → 交付 → 验收。
-- 评价 A → Evidence/Finding → Task → 验收 → 评价 B → 同口径复检。
-- 项目越权、重复导入、模型失败、规则无来源、任务缺材料五种异常。
-- README、实施状态、演示台词与页面表述一致。
+- [ ] 报价到交付验收完整跑通。
+- [ ] 差评到任务、验收和下一批复检完整跑通。
+- [ ] 缺字段、混合币种、重复评价和缺关联异常符合预期。
+- [ ] 模型未配置或失败不污染业务状态。
+- [ ] 页面和服务均阻止跨项目访问。
+- [ ] 所有模拟数据、真实能力和未完成限制已标明。
+- [ ] README、海报、路演和实施状态与最终代码一致。
+- [ ] 两台电脑上的测试和提交哈希一致。
 
-共同冻结提交：
-
-```text
-release: freeze TradeLoop hackathon demo
-```
-
-随后打标签：
+最终标签：
 
 ```powershell
-git tag -a v1.0.0-demo -m "TradeLoop hackathon demo"
-git push origin main --tags
+git tag -a hackathon-final -m "TradeLoop hackathon final submission"
+git push origin main hackathon-final
 ```
 
-## 6. 每日同步操作
+`v1.0.0-demo` 可以作为额外版本标签，但不能替代 `hackathon-final`。
+
+## 6. 每日同步和提交
 
 开始工作：
 
@@ -260,39 +216,36 @@ git checkout <自己的分支>
 git merge main
 ```
 
-结束一个可测试小模块：
+完成一个小模块：
 
 ```powershell
 python -m pytest -q
 python -m ruff check core services pages scripts tests
 git status --short
 git add <本模块文件>
-git commit -m "feat: <一个明确结果>"
+git diff --cached
+git commit -m "feat: <一个可验证结果>"
 git push
 ```
 
-不要使用 `git add .` 把 `.env`、临时截图、个人笔记或数据库一起提交。提交前双方都检查：
+禁止使用 `git add .`、`git reset --hard`、共享分支强推或直接在 `main` 开发。`.env`、SQLite 数据库、上传文件、真实客户数据和 API Key 不得进入 Git。
+
+## 7. Pull Request 门槛
+
+每个 PR 必须写明：
+
+- 完成的业务结果和修改文件。
+- 实际运行的测试及结果。
+- 是否改变数据库、环境变量、模拟数据或交付物。
+- 哪些能力仍然是规则降级、模拟数据或未完成状态。
+- 需要另一人重点手工检查的页面和异常。
+
+合并后双方立即执行：
 
 ```powershell
-git diff --cached --stat
-git diff --cached
+git checkout main
+git pull --ff-only origin main
+git rev-parse HEAD
 ```
 
-## 7. 冲突处理
-
-- 出现冲突时，先停止继续编辑，在群里发出文件名和冲突分支。
-- 由该文件当前负责人解决冲突，另一人只负责复核结果。
-- 不使用 `git reset --hard` 或强制推送共享分支。
-- 不直接向 `main` 强推；使用 Pull Request，并要求另一人 review。
-- 合并后双方立即切回 `main` 并 `git pull --ff-only`，确认提交哈希一致。
-
-## 8. Pull Request 模板
-
-每个 PR 至少写明：
-
-- 完成了什么业务结果。
-- 修改了哪些核心文件。
-- 实际运行了哪些测试及结果。
-- 是否改变数据库结构、环境变量或演示数据。
-- 哪些结论仍来自模拟数据或规则降级。
-- 需要另一人重点检查的页面或风险。
+两边提交哈希一致后，下一阶段才能开始。
