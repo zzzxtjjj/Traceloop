@@ -1,0 +1,3 @@
+review_id,batch,rating,date,sku,market,review_text,order_id,production_batch,supplier
+DEMO-DUP-001,DuplicateDemo,2,2026-10-10,BOTTLE-750,US,The box arrived crushed.,ORDER-D-001,PB-DEMO-03,Demo Supplier
+DEMO-DUP-001,DuplicateDemo,1,2026-10-11,BOTTLE-750,US,Packaging was damaged on arrival.,ORDER-D-002,PB-DEMO-03,Demo Supplier

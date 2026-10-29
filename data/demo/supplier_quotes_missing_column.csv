@@ -1,0 +1,2 @@
+supplier,unit_price,moq,lead_time_days,payment_terms,quality_note
+Demo Missing Currency,4.60,500,20,"30% deposit; 70% before shipment",模拟异常数据：故意缺少 currency 必填列

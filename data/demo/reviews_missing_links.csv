@@ -1,0 +1,4 @@
+review_id,batch,rating,date,sku,market,review_text,order_id,production_batch,supplier
+DEMO-MISS-001,MissingLinks,1,2026-10-12,BOTTLE-750,US,The box arrived crushed.,,,
+DEMO-MISS-002,MissingLinks,2,2026-10-13,BOTTLE-750,US,Packaging was damaged and the bottle had a dent.,,,
+DEMO-MISS-003,MissingLinks,4,2026-10-14,BOTTLE-750,US,The bottle works as expected.,,,
