@@ -5,9 +5,11 @@ import secrets
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
-from core.db import session_scope
-from core.models import AuditEvent, Project
+from core.db import session_context, session_scope
+from core.errors import ProjectAccessDeniedError
+from core.models import AuditEvent, Project, ProjectMember, User
 from core.schemas import ProjectCreate
 
 
@@ -31,29 +33,50 @@ def verify_access_code(access_code: str, encoded: str) -> bool:
     return hmac.compare_digest(actual.hex(), digest_hex)
 
 
-def create_project(payload: ProjectCreate) -> Project:
-    project = Project(
-        name=payload.name,
-        product_name=payload.product_name,
-        access_code_hash=_hash_access_code(payload.access_code),
-        markets_json=json.dumps(payload.markets, ensure_ascii=False),
-    )
-    try:
-        with session_scope() as session:
-            session.add(project)
-            session.flush()
-            session.add(
-                AuditEvent(
-                    project_id=project.id,
-                    actor_role="项目负责人",
-                    action="project_created",
-                    entity_type="project",
-                    entity_id=project.id,
+def create_project(
+    payload: ProjectCreate,
+    owner_user_id: int | None = None,
+    session: Session | None = None,
+) -> Project:
+    with session_context(session) as db:
+        if db.scalar(select(Project.id).where(Project.name == payload.name)) is not None:
+            raise ProjectNameExistsError("项目名称已存在，请换一个名称。")
+        if owner_user_id is not None:
+            owner = db.get(User, owner_user_id)
+            if not owner or not owner.active:
+                raise ProjectAccessDeniedError("当前用户无权执行该项目操作。")
+        project = Project(
+            name=payload.name,
+            product_name=payload.product_name,
+            access_code_hash=_hash_access_code(payload.access_code),
+            markets_json=json.dumps(payload.markets, ensure_ascii=False),
+        )
+        try:
+            with db.begin_nested():
+                db.add(project)
+                db.flush()
+                if owner_user_id is not None:
+                    db.add(
+                        ProjectMember(
+                            project_id=project.id,
+                            user_id=owner_user_id,
+                            role="owner",
+                            status="active",
+                        )
+                    )
+                db.add(
+                    AuditEvent(
+                        project_id=project.id,
+                        actor_role="owner" if owner_user_id is not None else "项目负责人",
+                        action="project_created",
+                        entity_type="project",
+                        entity_id=project.id,
+                    )
                 )
-            )
-    except IntegrityError as exc:
-        raise ProjectNameExistsError("项目名称已存在，请换一个名称。") from exc
-    return project
+                db.flush()
+        except IntegrityError as exc:
+            raise ProjectNameExistsError("项目名称已存在，请换一个名称。") from exc
+        return project
 
 
 def list_projects() -> list[Project]:

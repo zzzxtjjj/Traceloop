@@ -20,7 +20,7 @@ def test_empty_database_upgrades_to_current_schema(tmp_path) -> None:
     assert "alembic_version" in table_names
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0001_current_schema"
+            "0002_project_membership"
         )
 
 
@@ -88,7 +88,7 @@ def test_repeated_upgrade_is_idempotent(tmp_path) -> None:
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT COUNT(*) FROM alembic_version")) == 1
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0001_current_schema"
+            "0002_project_membership"
         )
 
 
