@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TradeLoop 三分钟路演</title>
+  <style>
+    :root {
+      --ink: #263b46;
+      --copy: #4c514f;
+      --muted: #7c8583;
+      --paper: #fffcf7;
+      --cream: #f8f5ef;
+      --sea-pale: #dceaf0;
+      --sea: #bfd9e2;
+      --navy: #29485a;
+      --coral: #e77d66;
+      --vermilion: #c75c48;
+      --gold: #c6a36a;
+      --line: rgba(41, 72, 90, 0.18);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--paper);
+      color: var(--copy);
+      font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+    }
+
+    body { overflow: hidden; }
+
+    .deck { min-height: 100vh; }
+
+    .slide {
+      display: none;
+      min-height: 100vh;
+      padding: clamp(32px, 5vw, 84px) clamp(36px, 7vw, 118px) 92px;
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(115deg, rgba(220, 234, 240, 0.62), transparent 38%),
+        var(--paper);
+    }
+
+    .slide.active {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      animation: enter 260ms ease-out;
+    }
+
+    @keyframes enter {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .eyebrow {
+      color: var(--vermilion);
+      font-size: clamp(13px, 1.2vw, 18px);
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      margin: 0 0 14px;
+    }
+
+    h1, h2, h3 { color: var(--ink); margin: 0; }
+
+    h1 {
+      font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif;
+      font-size: clamp(54px, 8vw, 118px);
+      line-height: 0.96;
+      letter-spacing: -0.04em;
+      max-width: 980px;
+    }
+
+    h2 {
+      font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif;
+      font-size: clamp(38px, 5vw, 72px);
+      line-height: 1.06;
+      letter-spacing: -0.025em;
+      max-width: 1100px;
+    }
+
+    h3 {
+      font-size: clamp(19px, 1.8vw, 28px);
+      line-height: 1.3;
+    }
+
+    p { margin: 0; line-height: 1.65; }
+
+    .lead {
+      font-size: clamp(22px, 2.4vw, 38px);
+      line-height: 1.55;
+      max-width: 1040px;
+      color: var(--copy);
+    }
+
+    .title-body {
+      align-self: center;
+      display: grid;
+      gap: 34px;
+    }
+
+    .title-rule {
+      width: min(420px, 44vw);
+      height: 8px;
+      background: linear-gradient(90deg, var(--vermilion), var(--gold));
+    }
+
+    .meta {
+      display: flex;
+      gap: 18px 34px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: clamp(14px, 1.25vw, 19px);
+    }
+
+    .content {
+      align-self: center;
+      width: 100%;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+      gap: clamp(38px, 7vw, 112px);
+      align-items: center;
+    }
+
+    .problem-list,
+    .capability-list,
+    .boundary-list {
+      list-style: none;
+      padding: 0;
+      margin: 30px 0 0;
+      display: grid;
+      gap: 20px;
+    }
+
+    .problem-list li,
+    .capability-list li,
+    .boundary-list li {
+      position: relative;
+      padding-left: 34px;
+      font-size: clamp(18px, 1.6vw, 25px);
+      line-height: 1.5;
+    }
+
+    .problem-list li::before,
+    .capability-list li::before,
+    .boundary-list li::before {
+      content: "";
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: var(--coral);
+      position: absolute;
+      left: 0;
+      top: 0.68em;
+    }
+
+    .statement {
+      border-left: 8px solid var(--navy);
+      padding: 10px 0 10px 32px;
+      font-size: clamp(27px, 3.2vw, 50px);
+      line-height: 1.36;
+      color: var(--ink);
+      font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif;
+    }
+
+    .flow-stack { display: grid; gap: 34px; margin-top: 42px; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 22px;
+      align-items: start;
+    }
+
+    .flow-label {
+      color: var(--vermilion);
+      font-size: clamp(18px, 1.6vw, 25px);
+      font-weight: 800;
+      padding-top: 7px;
+    }
+
+    .flow-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .flow-line span {
+      color: var(--ink);
+      font-size: clamp(17px, 1.45vw, 23px);
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .flow-line i {
+      display: block;
+      width: 28px;
+      height: 2px;
+      background: var(--gold);
+      position: relative;
+    }
+
+    .flow-line i::after {
+      content: "";
+      position: absolute;
+      right: -1px;
+      top: -4px;
+      border-left: 7px solid var(--gold);
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+    }
+
+    .evidence-layout {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: clamp(42px, 7vw, 110px);
+      align-items: center;
+    }
+
+    .evidence-path {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      align-items: stretch;
+      margin-top: 42px;
+    }
+
+    .evidence-step {
+      padding: 20px 12px;
+      border-top: 5px solid var(--navy);
+      background: rgba(255, 252, 247, 0.76);
+      min-height: 122px;
+    }
+
+    .evidence-step strong {
+      display: block;
+      color: var(--ink);
+      font-size: clamp(16px, 1.35vw, 21px);
+      margin-bottom: 9px;
+    }
+
+    .evidence-step small {
+      color: var(--muted);
+      font-size: clamp(12px, 1vw, 16px);
+      line-height: 1.45;
+    }
+
+    .human-gate {
+      border: 2px solid var(--coral);
+      padding: 30px;
+      color: var(--ink);
+      font-size: clamp(23px, 2.4vw, 38px);
+      line-height: 1.45;
+      font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif;
+      background: rgba(255, 252, 247, 0.78);
+    }
+
+    .boundaries {
+      display: grid;
+      grid-template-columns: 0.95fr 1.05fr;
+      gap: clamp(42px, 7vw, 105px);
+      align-items: center;
+    }
+
+    .final-line {
+      font-family: Georgia, "Times New Roman", "Microsoft YaHei", serif;
+      color: var(--ink);
+      font-size: clamp(31px, 4vw, 62px);
+      line-height: 1.32;
+      max-width: 980px;
+    }
+
+    .repo {
+      margin-top: 34px;
+      color: var(--navy);
+      font-size: clamp(16px, 1.35vw, 21px);
+      word-break: break-all;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 24px;
+      color: var(--muted);
+      font-size: 14px;
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+    }
+
+    .disclosure { max-width: 760px; line-height: 1.45; }
+
+    .nav {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 252, 247, 0.92);
+      box-shadow: 0 12px 32px rgba(38, 59, 70, 0.12);
+      backdrop-filter: blur(8px);
+    }
+
+    .nav button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      min-width: 38px;
+      height: 34px;
+      border-radius: 999px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .nav button:hover,
+    .nav button:focus-visible { background: var(--sea-pale); color: var(--ink); }
+    .nav button.active { background: var(--navy); color: white; }
+
+    .nav .move {
+      min-width: 34px;
+      font-size: 20px;
+    }
+
+    @media (max-width: 900px) {
+      .slide { padding: 32px 30px 96px; }
+      .split, .evidence-layout, .boundaries { grid-template-columns: 1fr; gap: 34px; }
+      .flow { grid-template-columns: 1fr; gap: 8px; }
+      .evidence-path { grid-template-columns: 1fr; }
+      .evidence-step { min-height: auto; }
+      .footer { align-items: start; flex-direction: column; }
+    }
+
+    @media print {
+      @page { size: 13.333in 7.5in; margin: 0; }
+      body { overflow: visible; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .nav { display: none; }
+      .slide,
+      .slide.active {
+        display: grid !important;
+        width: 13.333in;
+        height: 7.5in;
+        min-height: 0;
+        padding: 0.48in 0.65in 0.45in;
+        page-break-after: always;
+        overflow: hidden;
+        animation: none;
+      }
+      .slide:last-child { page-break-after: auto; }
+      .split { grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr) !important; gap: 42px !important; }
+      .evidence-layout { grid-template-columns: 1.1fr 0.9fr !important; gap: 38px !important; }
+      .boundaries { grid-template-columns: 0.95fr 1.05fr !important; gap: 42px !important; }
+      .flow { grid-template-columns: 120px 1fr !important; gap: 18px !important; }
+      .evidence-path { grid-template-columns: repeat(5, 1fr) !important; }
+      .evidence-step { min-height: 96px !important; padding: 14px 8px !important; }
+      .footer { font-size: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-label="TradeLoop 三分钟路演">
+    <section class="slide active" data-title="项目概览">
+      <header>
+        <p class="eyebrow">TRADELOOP</p>
+      </header>
+      <div class="title-body">
+        <h1>证据驱动的跨境业务改进闭环</h1>
+        <div class="title-rule"></div>
+        <p class="lead">把供应商报价、客户评价、改进任务和后续复检放进同一条可追溯链路。</p>
+        <div class="meta">
+          <span>三分钟路演</span>
+          <span>模拟数据演示</span>
+          <span>关键结论由人工确认</span>
+        </div>
+      </div>
+      <footer class="footer">
+        <span class="disclosure">当前模型供应商尚未配置。规则分类会明确标记，程序负责统计。</span>
+        <span>01 / 05</span>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="业务问题">
+      <header>
+        <p class="eyebrow">业务问题</p>
+        <h2>结论散落在文件和岗位之间</h2>
+      </header>
+      <div class="content split">
+        <ul class="problem-list">
+          <li>报价风险很难回到原始字段</li>
+          <li>差评结论与原文和统计口径脱节</li>
+          <li>任务完成缺少交付物和人工验收</li>
+          <li>前后指标变化容易被误写成因果证明</li>
+        </ul>
+        <p class="statement">TradeLoop 让每个问题从原始证据出发，经过人工确认、任务交付和后续复检。</p>
+      </div>
+      <footer class="footer">
+        <span class="disclosure">目标是可追溯和可审核，不替代业务负责人做决定。</span>
+        <span>02 / 05</span>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="两条工作流">
+      <header>
+        <p class="eyebrow">两条核心工作流</p>
+        <h2>两条工作流遵循同一套证据原则</h2>
+      </header>
+      <div class="content flow-stack">
+        <div class="flow">
+          <div class="flow-label">报价证据链</div>
+          <div class="flow-line" aria-label="报价证据链">
+            <span>报价导入</span><i></i><span>程序比较</span><i></i><span>原始字段</span><i></i><span>风险确认</span><i></i><span>澄清任务</span><i></i><span>交付验收</span>
+          </div>
+        </div>
+        <div class="flow">
+          <div class="flow-label">差评改进链</div>
+          <div class="flow-line" aria-label="差评改进链">
+            <span>评价去重</span><i></i><span>程序统计</span><i></i><span>原文证据</span><i></i><span>人工审核</span><i></i><span>改进任务</span><i></i><span>后续复检</span>
+          </div>
+        </div>
+      </div>
+      <footer class="footer">
+        <span class="disclosure">缺少订单、批次或供应商关联时，系统显示缺失，不自动补造。</span>
+        <span>03 / 05</span>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="证据与人工审核">
+      <header>
+        <p class="eyebrow">证据与人工审核</p>
+        <h2>最终结论可以一路回到原始数据</h2>
+      </header>
+      <div class="content evidence-layout">
+        <div class="evidence-path" aria-label="证据追溯路径">
+          <div class="evidence-step"><strong>原始记录</strong><small>报价字段或评价原文</small></div>
+          <div class="evidence-step"><strong>程序结果</strong><small>校验、计数和统计口径</small></div>
+          <div class="evidence-step"><strong>问题发现</strong><small>事实、假设和缺失信息</small></div>
+          <div class="evidence-step"><strong>任务交付</strong><small>责任岗位、材料和审核状态</small></div>
+          <div class="evidence-step"><strong>后续复检</strong><small>同口径比较和样本量</small></div>
+        </div>
+        <div class="human-gate">模型或规则只能提出结构化发现。人工审核后，问题才能进入正式任务和验收流程。</div>
+      </div>
+      <footer class="footer">
+        <span class="disclosure">前后变化只描述趋势。评价占比不等于产品实际故障率。</span>
+        <span>04 / 05</span>
+      </footer>
+    </section>
+
+    <section class="slide" data-title="边界与交付">
+      <header>
+        <p class="eyebrow">边界与交付</p>
+        <h2>演示清楚说明能力范围</h2>
+      </header>
+      <div class="content boundaries">
+        <ul class="boundary-list">
+          <li>模型失败不会写入半成品业务结论</li>
+          <li>项目访问边界会阻止跨项目对象读取</li>
+          <li>规则检查不等于法律意见或平台审核</li>
+          <li>本地 SQLite 适合单机演示</li>
+        </ul>
+        <div>
+          <p class="final-line">让跨岗位改进从可验证的证据开始，并留下完整的人工决策记录。</p>
+          <p class="repo">github.com/zzzxtjjj/Traceloop</p>
+        </div>
+      </div>
+      <footer class="footer">
+        <span class="disclosure">本演示使用模拟数据。访问码和演示角色不代表企业级身份系统。</span>
+        <span>05 / 05</span>
+      </footer>
+    </section>
+  </main>
+
+  <nav class="nav" aria-label="幻灯片导航">
+    <button class="move" id="prev" type="button" aria-label="上一页">‹</button>
+    <button class="active" type="button" data-index="0" aria-label="第 1 页">1</button>
+    <button type="button" data-index="1" aria-label="第 2 页">2</button>
+    <button type="button" data-index="2" aria-label="第 3 页">3</button>
+    <button type="button" data-index="3" aria-label="第 4 页">4</button>
+    <button type="button" data-index="4" aria-label="第 5 页">5</button>
+    <button class="move" id="next" type="button" aria-label="下一页">›</button>
+  </nav>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const pageButtons = Array.from(document.querySelectorAll('[data-index]'));
+    let current = 0;
+
+    function show(index) {
+      current = (index + slides.length) % slides.length;
+      slides.forEach((slide, position) => slide.classList.toggle('active', position === current));
+      pageButtons.forEach((button, position) => button.classList.toggle('active', position === current));
+      document.title = `TradeLoop 三分钟路演 · ${slides[current].dataset.title}`;
+      history.replaceState(null, '', `#${current + 1}`);
+    }
+
+    document.getElementById('prev').addEventListener('click', () => show(current - 1));
+    document.getElementById('next').addEventListener('click', () => show(current + 1));
+    pageButtons.forEach(button => button.addEventListener('click', () => show(Number(button.dataset.index))));
+
+    document.addEventListener('keydown', event => {
+      if (['ArrowRight', 'PageDown', ' '].includes(event.key)) show(current + 1);
+      if (['ArrowLeft', 'PageUp'].includes(event.key)) show(current - 1);
+      if (event.key === 'Home') show(0);
+      if (event.key === 'End') show(slides.length - 1);
+    });
+
+    const requested = Number(location.hash.replace('#', '')) - 1;
+    show(Number.isInteger(requested) && requested >= 0 && requested < slides.length ? requested : 0);
+  </script>
+</body>
+</html>
