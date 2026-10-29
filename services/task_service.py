@@ -18,6 +18,7 @@ from core.models import (
     Finding,
     ImprovementRecord,
     Insight,
+    ReviewBatch,
     Task,
     TaskSubmission,
     utc_now,
@@ -146,13 +147,20 @@ def create_improvement_record(
     with session_context(session) as db:
         finding = db.get(Finding, finding_id)
         task = db.get(Task, task_id)
+        baseline_batch = db.get(ReviewBatch, baseline_batch_id)
         if (
             not finding
             or not task
+            or not baseline_batch
             or finding.project_id != project_id
             or task.project_id != project_id
+            or baseline_batch.project_id != project_id
         ):
-            raise CrossProjectReferenceError("Finding 或任务不属于当前项目。")
+            raise CrossProjectReferenceError(
+                "Finding、任务或基线评价批次不存在或不属于当前项目。"
+            )
+        if task.source_type != "finding" or task.source_id != finding_id:
+            raise CrossProjectReferenceError("任务未关联指定 Finding，不能建立改进记录。")
         if not task.confirmed:
             raise InvalidStateTransitionError("任务发布后才能建立改进记录。")
         theme = _theme_from_finding(finding)
@@ -327,6 +335,8 @@ def review_task_submission(
         task = db.get(Task, submission.task_id)
         if not task or task.project_id != project_id:
             raise CrossProjectReferenceError("任务不存在或不属于当前项目。")
+        if reviewer.strip() == submission.submitted_by_role.strip():
+            raise InvalidStateTransitionError("交付提交人不能验收自己的交付。")
         submission.review_status = decision
         submission.reviewed_by = reviewer
         submission.review_note = note.strip()

@@ -125,7 +125,7 @@ def test_quote_to_reviewed_delivery_workflow(db_session, tmp_path) -> None:
         project_id=project.id,
         submission_id=submission.id,
         decision="accepted",
-        reviewer="项目负责人",
+        reviewer="独立验收人",
         note="已核对澄清记录。",
         session=db_session,
     )

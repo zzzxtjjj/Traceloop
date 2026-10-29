@@ -8,7 +8,57 @@ from sqlalchemy.orm import Session
 
 from core.db import session_context
 from core.errors import CrossProjectReferenceError, EvidenceRequiredError
-from core.models import Evidence, EvidenceLink, Finding
+from core.models import (
+    Artifact,
+    BusinessObject,
+    DailyReport,
+    Decision,
+    Evidence,
+    EvidenceLink,
+    Finding,
+    Generation,
+    ImprovementRecord,
+    Review,
+    ReviewBatch,
+    SupplierQuote,
+    Task,
+    TaskSubmission,
+    ValidationResult,
+)
+
+DIRECT_PROJECT_TARGETS = {
+    "artifact": Artifact,
+    "business_object": BusinessObject,
+    "daily_report": DailyReport,
+    "decision": Decision,
+    "finding": Finding,
+    "generation": Generation,
+    "improvement_record": ImprovementRecord,
+    "review_batch": ReviewBatch,
+    "task": Task,
+    "task_submission": TaskSubmission,
+}
+
+
+def _target_project_id(db: Session, target_type: str, target_id: int) -> int | None:
+    model = DIRECT_PROJECT_TARGETS.get(target_type)
+    if model is not None:
+        target = db.get(model, target_id)
+        return target.project_id if target else None
+
+    if target_type == "review":
+        review = db.get(Review, target_id)
+        batch = db.get(ReviewBatch, review.batch_id) if review else None
+        return batch.project_id if batch else None
+    if target_type == "supplier_quote":
+        quote = db.get(SupplierQuote, target_id)
+        artifact = db.get(Artifact, quote.artifact_id) if quote else None
+        return artifact.project_id if artifact else None
+    if target_type == "validation_result":
+        result = db.get(ValidationResult, target_id)
+        generation = db.get(Generation, result.generation_id) if result else None
+        return generation.project_id if generation else None
+    return None
 
 
 def _canonical_json(value: dict) -> str:
@@ -86,10 +136,11 @@ def link_evidence(
         evidence = db.get(Evidence, evidence_id)
         if not evidence or evidence.project_id != project_id:
             raise CrossProjectReferenceError("证据不存在或不属于当前项目。")
-        if target_type == "finding":
-            target = db.get(Finding, target_id)
-            if not target or target.project_id != project_id:
-                raise CrossProjectReferenceError("发现不存在或不属于当前项目。")
+        target_project_id = _target_project_id(db, target_type, target_id)
+        if target_project_id != project_id:
+            raise CrossProjectReferenceError(
+                f"关联目标 {target_type} 不存在、不受支持或不属于当前项目。"
+            )
 
         existing = db.scalar(
             select(EvidenceLink).where(
