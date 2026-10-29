@@ -8,16 +8,32 @@ from services.release_verification import report_as_json, verify_release
 
 
 class FakeRunner:
-    def __init__(self, *, dirty: bool = False, failures: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        dirty: bool = False,
+        failures: set[str] | None = None,
+        upstream: str = "same",
+    ) -> None:
         self.dirty = dirty
         self.failures = failures or set()
+        self.upstream = upstream
         self.commands: list[list[str]] = []
 
     def __call__(self, command, **kwargs):
         self.commands.append(list(command))
         command_text = " ".join(command)
+        if "rev-parse" in command_text and "@{upstream}" in command:
+            if self.upstream == "none":
+                return subprocess.CompletedProcess(command, 128, stdout="", stderr="")
+            upstream_hash = "abc123" if self.upstream == "same" else "def456"
+            return subprocess.CompletedProcess(
+                command, 0, stdout=f"{upstream_hash}\n", stderr=""
+            )
         if "rev-parse" in command_text:
             return subprocess.CompletedProcess(command, 0, stdout="abc123\n", stderr="")
+        if "rev-list" in command_text:
+            return subprocess.CompletedProcess(command, 0, stdout="2\t3\n", stderr="")
         if "git status" in command_text:
             stdout = " M private-name.txt\n" if self.dirty else ""
             return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
@@ -121,8 +137,8 @@ def test_quick_verification_passes_complete_offline_release(tmp_path) -> None:
     )
 
     assert report.exit_code == 0
-    assert report.counts == {"pass": 9, "warning": 0, "fail": 0}
-    assert len(runner.commands) == 2
+    assert report.counts == {"pass": 10, "warning": 0, "fail": 0}
+    assert len(runner.commands) == 3
     assert all("--live" not in command for command in runner.commands)
     serialized = report_as_json(report)
     assert "never-print-this-key" not in serialized
@@ -204,6 +220,44 @@ def test_incomplete_seed_and_dirty_worktree_are_failures_without_leaking_paths(
     git_check = next(item for item in report.checks if item.name == "git_worktree")
     assert git_check.status == "fail"
     assert "private-name" not in git_check.summary
+
+
+def test_missing_upstream_is_warning_without_network_access(tmp_path) -> None:
+    database_url = make_release_tree(tmp_path)
+    runner = FakeRunner(upstream="none")
+
+    report = verify_release(
+        root_dir=tmp_path,
+        database_url=database_url,
+        config=safe_config(database_url),
+        runner=runner,
+    )
+
+    check = next(item for item in report.checks if item.name == "git_upstream")
+    assert check.status == "warning"
+    assert report.exit_code == 0
+    assert all("fetch" not in command for command in runner.commands)
+
+
+def test_diverged_upstream_is_failure_with_counts_only(tmp_path) -> None:
+    database_url = make_release_tree(tmp_path)
+    runner = FakeRunner(upstream="different")
+
+    report = verify_release(
+        root_dir=tmp_path,
+        database_url=database_url,
+        config=safe_config(database_url),
+        runner=runner,
+    )
+
+    check = next(item for item in report.checks if item.name == "git_upstream")
+    assert check.status == "fail"
+    assert "ahead=2" in check.summary
+    assert "behind=3" in check.summary
+    assert "abc123" not in check.summary
+    assert "def456" not in check.summary
+    assert report.exit_code == 1
+    assert all("fetch" not in command for command in runner.commands)
 
 
 def test_full_mode_runs_pytest_then_ruff_and_sanitizes_output(tmp_path) -> None:

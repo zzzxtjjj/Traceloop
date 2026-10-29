@@ -234,7 +234,34 @@ def _check_git(root: Path, runner: CommandRunner) -> list[ReleaseCheck]:
         )
     else:
         tree_check = ReleaseCheck("git_worktree", "pass", "Git 工作树干净。")
-    return [head_check, tree_check]
+
+    upstream = _run_command(
+        runner,
+        ["git", "rev-parse", "--verify", "@{upstream}"],
+        root,
+    )
+    if upstream.returncode != 0 or not upstream.stdout.strip():
+        upstream_check = ReleaseCheck(
+            "git_upstream", "warning", "当前分支未配置本地 upstream 记录。"
+        )
+    elif head.returncode == 0 and head.stdout.strip() == upstream.stdout.strip():
+        upstream_check = ReleaseCheck(
+            "git_upstream", "pass", "本地 HEAD 与已记录 upstream 一致。"
+        )
+    else:
+        divergence = _run_command(
+            runner,
+            ["git", "rev-list", "--left-right", "--count", "HEAD...@{upstream}"],
+            root,
+        )
+        match = re.fullmatch(r"\s*(\d+)\s+(\d+)\s*", divergence.stdout)
+        if divergence.returncode == 0 and match:
+            ahead, behind = match.groups()
+            summary = f"本地分支与 upstream 不一致：ahead={ahead}，behind={behind}。"
+        else:
+            summary = "本地分支与 upstream 不一致。"
+        upstream_check = ReleaseCheck("git_upstream", "fail", summary)
+    return [head_check, tree_check, upstream_check]
 
 
 def _check_tool(
