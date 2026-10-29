@@ -4,7 +4,7 @@
 >
 > 使用方式：甲乙共同操作；只有全部强制项通过，才允许创建 `hackathon-final` 标签。
 >
-> 当前自动测试下限：92 项。后续可以增加，但不得减少或跳过失败项。
+> 当前自动测试下限：133 项。后续可以增加，但不得减少或跳过失败项。
 
 ## 0. 发布原则
 
@@ -22,7 +22,7 @@
 - [ ] 共享文件的改动已由另一人复核，没有覆盖对方尚未合并的修改。
 - [ ] 已阅读 [当前实现状态](IMPLEMENTATION_STATUS.md)、[团队协作清单](TEAM_COLLABORATION.md)和[两人分工执行表](两人分工执行表.md)。
 
-通过标准：两人对已实现、未实现和演示范围的表述一致，真实模型联网和成员级 RBAC 不得误报为已完成。
+通过标准：两人对已实现、未实现和演示范围的表述一致。User/ProjectMember 最小权限已经实现；真实模型联网、生产登录会话和企业级 RBAC 不得误报为已完成。
 
 ## M1：自动验证与页面检查
 
@@ -36,7 +36,7 @@ python -m pytest -q
 python -m ruff check core services pages scripts tests
 ```
 
-- [ ] `pytest` 显示不少于 92 项测试且全部通过。
+- [ ] `pytest` 显示不少于 133 项测试且全部通过。
 - [ ] Ruff 显示 `All checks passed!`。
 - [ ] CI 使用 Python 3.12，安装 `requirements.txt` 后执行相同的 pytest 和 Ruff 命令。
 - [ ] 没有通过跳过测试、删除断言或忽略规则来制造绿色结果。
@@ -44,6 +44,7 @@ python -m ruff check core services pages scripts tests
 ### 2. 所有 Streamlit 页面
 
 ```powershell
+python scripts\migrate_db.py
 python scripts\seed_demo.py
 streamlit run app.py
 ```
@@ -57,7 +58,16 @@ streamlit run app.py
 - [ ] 每个页面刷新一次后仍可使用，不出现白屏、对象丢失或跨项目数据泄露。
 - [ ] 无权限、缺失字段、重复导入、样本不足、AI 未配置和规则降级都有可理解的提示。
 
-通过标准：92+ 测试和 Ruff 通过，全部页面逐页人工检查通过。
+通过标准：133+ 测试和 Ruff 通过，全部页面逐页人工检查通过。
+
+### 3. 成员权限与认证边界
+
+- [ ] User/ProjectMember 记录可以持久化，用户项目列表不包含非成员项目。
+- [ ] owner 可以添加成员，普通成员不能添加；重复成员、停用用户和停用成员均被拒绝。
+- [ ] 输入正确访问码后，非成员仍不能通过 `require_project_member`。
+- [ ] 页面拒绝信息不泄露项目名称、用户信息、对象 ID 或本地路径。
+- [ ] 演示明确说明：本地用户选择不是登录认证，服务级 user ID 传递不是生产会话。
+- [ ] OAuth/SSO、可信服务端认证会话和企业级 RBAC 标记为未完成。
 
 ## M2：两条端到端工作流与异常恢复
 
@@ -106,6 +116,7 @@ cd Traceloop
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+python scripts\migrate_db.py
 python scripts\seed_demo.py
 streamlit run app.py
 ```
@@ -114,6 +125,8 @@ streamlit run app.py
 - [ ] 记录电脑系统、Python 版本、开始时间、完成时间和遇到的问题。
 - [ ] 重启 Streamlit 后演示数据、任务、证据和复检记录仍能读取。
 - [ ] 若网络安装时间导致超时，必须记录实际耗时和离线依赖方案，不能直接勾选通过。
+- [ ] 本机 `data/tradeloop.db` 显示迁移版本 `0002_project_membership`。
+- [ ] 迁移前备份只保存在本机，数据库和备份文件均未进入 Git 或交付包。
 
 ### 2. 模拟数据和安全声明
 
@@ -162,7 +175,7 @@ python -m ruff check core services pages scripts tests
 - [ ] 双方 `git status --short` 均为空。
 - [ ] 双方 `git rev-parse HEAD` 输出完全一致。
 - [ ] 准备发布的 `HEAD` 与 `origin/main` 一致。
-- [ ] 双方机器均通过 92+ 测试和 Ruff。
+- [ ] 双方机器均通过 133+ 测试和 Ruff。
 - [ ] M0、M1、M2、M3 全部强制项已通过并由两人签字确认。
 - [ ] 最终交付文件已打开检查，而不是仅确认文件存在。
 

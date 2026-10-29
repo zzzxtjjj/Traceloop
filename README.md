@@ -6,7 +6,9 @@ TradeLoop 是一个证据驱动的跨境业务协作工作台。V1 将供应商�
 
 ## 已实现
 
-- 项目创建、切换、访问码哈希校验与项目级页面访问边界。
+- 项目创建、切换、访问码哈希校验，以及 User/ProjectMember 持久化和成员项目列表隔离。
+- 负责人可添加项目成员；普通成员、非成员、停用用户和停用成员会被服务层拒绝。
+- 正确访问码只解锁项目入口，不会自动授予项目成员资格。
 - 报价 CSV 校验、SHA-256 去重、币种可比性检查、确定性评分和来源证据。
 - 报价风险回指原始行、缺失条件提示、供应商澄清问题和人工最终选择。
 - 评价 CSV 字段校验、文件/评价 ID 去重、批次和时间范围记录。
@@ -34,6 +36,7 @@ hackson/
 ├─ data/rules.json           # 带来源类型和版本的规则定义
 ├─ docs/                     # 架构、安全、内部标准和实施状态
 ├─ prompts/                  # AI Prompt 版本管理约定
+├─ scripts/migrate_db.py     # Alembic 非破坏数据库升级入口
 ├─ scripts/seed_demo.py      # 可重复执行的演示数据初始化
 └─ tests/                    # 确定性单元和端到端工作流测试
 ```
@@ -49,11 +52,13 @@ python -m venv .venv
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 Copy-Item .env.example .env
+python scripts\migrate_db.py
 python scripts\seed_demo.py
 streamlit run app.py
 ```
 
 打开终端显示的地址，通常为 `http://localhost:8501`。演示项目访问码为 `demo2026`。
+当前本机的 `data/tradeloop.db` 已迁移至 `0002_project_membership`；迁移前备份只保留在本机，数据库及本地 `.db` 备份均不得提交 Git。
 
 ## 自动检查
 
@@ -61,6 +66,8 @@ streamlit run app.py
 python -m ruff check core services pages scripts tests
 python -m pytest -q
 ```
+
+当前基线为 133 项测试全部通过。
 
 ## 两条核心验收工作流
 
@@ -97,8 +104,10 @@ SQLite 数据库、上传文件和虚拟环境不会进入 Git。共享的是代
 
 ## 安全与边界
 
-- V1 访问码使用 PBKDF2-SHA256 哈希且不记录明文，但它不是企业级身份系统。
-- 页面按项目解锁，服务会校验项目归属；演示角色选择器不能替代真实成员认证/RBAC。
+- V1 访问码使用 PBKDF2-SHA256 哈希且不记录明文，但访问码不会授予成员资格。
+- User/ProjectMember、成员列表隔离和负责人添加成员已经持久化并由服务层校验。
+- 页面中的本地用户选择仅用于演示身份上下文，不是登录认证；服务级用户 ID 传递也不是生产会话。
+- OAuth、SSO、服务端认证会话和企业级 RBAC 尚未实现。
 - API 密钥只从 `.env` 读取；数据库、上传文件和 `.env` 已被 `.gitignore` 排除。
 - 上传内容只作为业务数据，不作为系统或开发指令执行。
 - 规则检查不等于法律意见或平台最终审核。

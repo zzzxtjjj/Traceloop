@@ -13,6 +13,7 @@ python -m venv .venv
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 Copy-Item .env.example .env
+python scripts\migrate_db.py
 python scripts\seed_demo.py
 python -m pytest -q
 python -m ruff check core services pages scripts tests
@@ -24,7 +25,7 @@ streamlit run app.py
 开始路演前逐项确认：
 
 - [ ] `git status --short` 没有意外修改。
-- [ ] 测试和 Ruff 均通过。
+- [ ] 至少 133 项测试和 Ruff 均通过。
 - [ ] 首页、项目首页、报价决策、任务与日报、差评改进、本地化与校验均可打开。
 - [ ] 演示项目可以使用 `demo2026` 进入。
 - [ ] 浏览器缩放、投影分辨率和网络状态已确认。
@@ -62,7 +63,7 @@ streamlit run app.py
 
 ### 2:35 至 3:00 边界和交付
 
-说明以下边界：演示数据为模拟数据；当前模型提供器尚未配置，规则分类会明确标记；访问码和演示角色不是企业级身份系统；规则检查不是法律意见或平台最终审核。
+说明以下边界：演示数据为模拟数据；当前模型提供器尚未配置，规则分类会明确标记；User/ProjectMember 和成员隔离已实现，但本地用户选择不是登录认证，服务级身份传递也不是生产会话；规则检查不是法律意见或平台最终审核。
 
 ## 3. 完整工作流 A 报价到人工验收
 
@@ -148,6 +149,7 @@ SQLite 数据库和已导入记录会保留。
 重新运行：
 
 ```powershell
+.\.venv\Scripts\python.exe scripts\migrate_db.py
 .\.venv\Scripts\python.exe scripts\seed_demo.py
 ```
 
@@ -167,9 +169,12 @@ SQLite 数据库和已导入记录会保留。
 - 当前分类默认是规则基线，只有配置并实际调用合格的模型提供器后才能表述为真实 AI。
 - 评价占比只表示当前评价样本中的占比，不是产品实际故障率。
 - 前后批次变化只能描述趋势，不能单独证明某项措施有效。
-- 访问码和演示角色用于黑客松演示，不是完整账号认证和企业级 RBAC。
+- User/ProjectMember、成员列表隔离、owner 添加成员和访问码/成员资格分离已实现。
+- 本地用户选择用于黑客松演示，不是登录认证；服务级 user ID 传递不是生产会话。
+- OAuth/SSO、可信服务端认证会话和企业级 RBAC 尚未实现。
 - 规则库覆盖有限，`not_covered` 或“待确认”不能被表述为合规通过。
 - 本地 SQLite 适合单机演示，不适合多人并发生产使用。
+- 当前本机 `data/tradeloop.db` 已迁至 `0002_project_membership`；迁移前备份仅保存在本机，数据库及备份均不进入 Git。
 
 ## 8. 演示结束检查
 

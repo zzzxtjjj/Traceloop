@@ -13,7 +13,7 @@ integration/parallel-progress-20261029
 当前验证结果：
 
 ```text
-115 tests passed
+133 tests passed
 Ruff passed
 ```
 
@@ -40,7 +40,7 @@ git rev-parse HEAD
 - `services/`
 - `scripts/seed_demo.py`
 - 服务层和端到端测试
-- 数据库结构、未来迁移和项目访问边界
+- 数据库结构、Alembic 迁移和项目访问边界
 - 模型提供器、结构化输出校验和错误处理
 - 跨模块证据链查询
 
@@ -92,6 +92,8 @@ git rev-parse HEAD
 - Python 3.12 GitHub Actions，自动运行 pytest 和 Ruff。
 - Alembic 非破坏迁移，覆盖空数据库、受支持的旧数据库和重复升级。
 - 统一安全权限/异常 UI，敏感页面使用一致的角色边界提示和脱敏错误信息。
+- User/ProjectMember 持久化、成员项目列表隔离、负责人添加成员和停用状态拒绝。
+- 正确访问码不授予成员资格；非成员仍会被 `require_project_member` 拒绝。
 
 ## 4. 仍未完成或必须继续验证
 
@@ -118,15 +120,17 @@ git rev-parse HEAD
 
 当前状态：已完成 Alembic 基线和非破坏升级路径，空数据库、受支持的旧数据库、重复升级和失败提示均有自动测试。迁移不会把备份责任或任意生产数据库兼容性自动变成已解决能力。
 
+本机 `data/tradeloop.db` 已升级至 `0002_project_membership`。迁移前备份仅保存在本机，并由 `.gitignore` 排除，不得加入提交或交付包。
+
 验证结果：迁移不自动删除现有数据；失败时提示迁移失败、未自动删除数据和备份要求。
 
-### A3 真实成员和项目权限
+### A3 项目成员权限（持久化与服务校验已完成）
 
 负责人：甲负责后端，乙负责权限和异常页面。
 
-当前状态：已有项目归属检查和访问码页面，尚无真实 User/ProjectMember 身份和企业级 RBAC。
+当前状态：User/ProjectMember 持久化、成员列表隔离、owner 添加成员、成员唯一性和停用状态拒绝已完成。访问码与成员资格相互独立。
 
-完成条件：真实成员身份、项目角色和服务端授权存在；非成员、普通成员、提交人自验和对象 ID 猜测均有失败测试；页面不泄露其他项目内容。
+边界：本地用户选择只是演示身份上下文，不是登录认证；服务层传入 user ID 也不是不可伪造的生产会话。OAuth/SSO、服务端认证会话、完整成员生命周期和企业级 RBAC 仍未完成。
 
 ### B4 统一安全权限与异常 UI（已完成）
 
@@ -139,7 +143,7 @@ git rev-parse HEAD
 - [x] 报价、任务、差评和本地化敏感页面接入统一角色边界说明与异常渲染。
 - [x] 自动测试确认页面可加载，错误信息不会泄露对象、上游响应或本地路径。
 
-边界：该 UI 层改善反馈并配合现有后端项目归属检查，但不等于真实 User/ProjectMember 或企业级 RBAC。
+边界：该 UI 层改善反馈并配合 User/ProjectMember 服务校验，但不等于生产登录认证、可信会话或企业级 RBAC。
 
 ### B5 最终交付
 
@@ -169,9 +173,9 @@ git rev-parse HEAD
 
 ### M2 数据库和成员权限
 
-当前状态：Alembic 非破坏迁移已完成；真实成员最小版仍未完成。
+当前状态：Alembic 非破坏迁移和成员最小版均已完成；生产登录认证与企业级 RBAC 未完成。
 
-通过条件：空库、受支持旧库和重复升级已通过；真实成员、项目角色、越权发布、提交人自验和成员级对象访问仍须在 User/ProjectMember 实现后验收。
+通过条件：空库、受支持旧库、重复升级、非成员访问、普通成员加人、owner 加人、成员唯一性和停用状态均已通过；生产会话、OAuth/SSO 和企业级 RBAC 留作后续生产化工作。
 
 ### M3 最终交付冻结
 
@@ -182,6 +186,7 @@ git rev-parse HEAD
 ```powershell
 git checkout main
 git pull --ff-only origin main
+python scripts\migrate_db.py
 python scripts\seed_demo.py
 python -m pytest -q
 python -m ruff check core services pages scripts tests
