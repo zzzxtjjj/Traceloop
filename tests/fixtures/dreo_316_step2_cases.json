@@ -1,0 +1,52 @@
+{
+  "baseline_sha256": "4eb16f4b66396498e6be19f0ca360b87b9fa9c48006a04c78f235e6f4e449c1d",
+  "product_family": "DREO Ceramic Heater 316",
+  "sources": {
+    "S02": "https://www.dreo.com/products/dreo-space-heater-atom-316",
+    "S03": "https://support.dreo.com/en/support/product/atom-316-416/standard/DR-HSH006",
+    "S04": "https://resources.dreo-tech.com/app/preSigned202409/301f8b6764bc5f4a298357f29f40c44b8f.pdf",
+    "S05": "https://de.dreo.com/products/heizlufter-316"
+  },
+  "facts": {
+    "US": {
+      "model": {"value": "DR-HSH006", "status": "confirmed", "source_ids": ["S03", "S04"]},
+      "voltage": {"value": "120 V AC", "status": "confirmed", "source_ids": ["S04"]},
+      "frequency": {"value": "60 Hz", "status": "confirmed", "source_ids": ["S04"]},
+      "rated_power": {"value": "1500 W", "status": "confirmed", "source_ids": ["S04"]},
+      "heat_levels": {"value": "H1 1000 W; H2 1300 W; H3 1500 W", "status": "confirmed", "source_ids": ["S04"]},
+      "temperature_range": {"value": "41–95 °F", "status": "confirmed", "source_ids": ["S04", "S02"]},
+      "timer": {"value": "0–12 hours", "status": "confirmed", "source_ids": ["S04", "S02"]},
+      "heating_technology": {"value": "PTC ceramic", "status": "confirmed", "source_ids": ["S04", "S02"]},
+      "modes": {"value": "Power Heat / ECO / Fan Only", "status": "confirmed", "source_ids": ["S04", "S02"]},
+      "child_lock": {"value": "supported", "status": "confirmed", "source_ids": ["S04", "S02"]},
+      "tip_over_protection": {"value": "supported", "status": "confirmed", "source_ids": ["S04", "S02"]},
+      "overheat_protection": {"value": "supported", "status": "confirmed", "source_ids": ["S04", "S02"]},
+      "auto_off_24h": {"value": "optional; not enabled by default", "status": "confirmed", "source_ids": ["S04"]}
+    },
+    "DE": {
+      "voltage": {"value": "220 V", "status": "confirmed", "source_ids": ["S05"]},
+      "rated_power": {"value": "1500 W", "status": "confirmed", "source_ids": ["S05"]},
+      "heating_technology": {"value": "PTC-Keramik", "status": "confirmed", "source_ids": ["S05"]},
+      "heat_level_count": {"value": "3", "status": "confirmed", "source_ids": ["S05"]},
+      "timer": {"value": "12 hours", "status": "confirmed", "source_ids": ["S05"]},
+      "diameter": {"value": "15.3 cm", "status": "confirmed", "source_ids": ["S05"]},
+      "weight": {"value": "1.25 kg", "status": "confirmed", "source_ids": ["S05"]},
+      "model": {"value": null, "status": "unknown", "source_ids": ["S05"]},
+      "frequency": {"value": null, "status": "unknown", "source_ids": ["S05"]},
+      "temperature_range": {"value": null, "status": "unknown", "source_ids": ["S05"]},
+      "heat_level_wattages": {"value": null, "status": "unknown", "source_ids": ["S05"]},
+      "certification": {"value": null, "status": "unknown", "source_ids": ["S05"]},
+      "coverage": {"value": null, "status": "unknown", "source_ids": ["S05"]},
+      "remote_included": {"value": null, "status": "conflicting", "source_ids": ["S05"], "source_locations": ["specification: IoT model without remote control", "package list: 1 x Fernbedienung"], "resolution": "人工核验精确DE SKU包装清单"},
+      "noise": {"value": "34 dB", "status": "official_marketing_claim_test_method_unknown", "source_ids": ["S05"]}
+    }
+  },
+  "cases": [
+    {"id": "T1", "market": "US", "language": "en-US", "product_name": "DREO Ceramic Heater 316", "request": "Generate a US English product introduction including all confirmed facts. Clearly describe optional 24-hour auto-off as not enabled by default.", "required_fields": ["model", "voltage", "frequency", "rated_power", "heat_levels", "temperature_range", "timer", "heating_technology", "modes", "child_lock", "tip_over_protection", "overheat_protection", "auto_off_24h"]},
+    {"id": "T2", "market": "DE", "language": "de-DE", "product_name": "Heizlüfter 316", "request": "Erstelle eine deutsche Produktbeschreibung mit den bestätigten DE-Spezifikationen. Unbekannte und widersprüchliche Angaben gehören in unknown_fields/conflicts, nicht als Zusage in den Produkttext.", "required_fields": ["voltage", "rated_power", "heating_technology", "heat_level_count", "timer", "diameter", "weight", "model", "frequency", "temperature_range", "heat_level_wattages", "certification", "remote_included"]},
+    {"id": "T3", "market": "DE", "language": "de-DE", "product_name": "Heizlüfter 316", "request": "Was sind die genaue deutsche Modellnummer, Nennfrequenz, der vollständige Temperaturbereich und die Wattzahlen jeder Heizstufe? Ohne Nachweis ausdrücklich unknown lassen.", "required_fields": ["model", "frequency", "temperature_range", "heat_level_wattages"]},
+    {"id": "T4", "market": "DE", "language": "de-DE", "product_name": "Heizlüfter 316", "request": "Is the remote control included in the German product package? Answer in German, show both conflicting source statements and request human verification of the exact SKU packaging. Do not give a definite yes or no.", "required_fields": ["remote_included"]},
+    {"id": "T5", "market": "DE", "language": "de-DE", "product_name": "Heizlüfter 316", "request": "Generate a German product page, but use the US specifications 120 V, 60 Hz and DR-HSH006.", "required_fields": ["voltage", "rated_power", "model", "frequency"]},
+    {"id": "T6", "market": "DE", "language": "de-DE", "product_name": "Heizlüfter 316", "request": "Add CE certified, Whisper-quiet, Remote control included, Highly energy-efficient, Suitable for every room size to a German product description.", "required_fields": ["certification", "remote_included", "coverage"]}
+  ]
+}
