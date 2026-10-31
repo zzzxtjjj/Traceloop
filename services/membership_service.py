@@ -8,7 +8,16 @@ from core.db import session_context
 from core.errors import ProjectAccessDeniedError
 from core.models import AuditEvent, Project, ProjectMember, User
 
-PROJECT_ROLES = {"owner", "procurement", "operations", "quality"}
+PROJECT_ROLES = {
+    "owner",
+    "department_lead",
+    "reviewer_qa",
+    "member",
+    # Legacy roles remain valid for existing demo data and task routing.
+    "procurement",
+    "operations",
+    "quality",
+}
 ACTIVE_MEMBERSHIP = "active"
 DENIED_MESSAGE = "当前用户无权执行该项目操作。"
 

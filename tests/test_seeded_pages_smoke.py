@@ -153,4 +153,4 @@ raise SystemExit(1 if failures else 0)
     assert summary_line is not None, f"child process returned no page summary:\n{result.stdout}"
     summary = json.loads(summary_line)
     assert not summary["failures"]
-    assert len(summary["results"]) == 8
+    assert len(summary["results"]) == 9

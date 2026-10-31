@@ -56,7 +56,7 @@ def make_release_tree(root: Path, *, with_database: bool = True) -> str:
         "alembic.ini",
         "scripts/migrate_db.py",
         "scripts/seed_demo.py",
-        "migrations/versions/0002_project_membership.py",
+        "migrations/versions/0005_daily_report_identity.py",
         "deliverables/poster/tradeloop_poster.svg",
         "deliverables/pitch/index.html",
         "deliverables/pitch/THREE_MINUTE_SCRIPT.md",
@@ -64,8 +64,8 @@ def make_release_tree(root: Path, *, with_database: bool = True) -> str:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("placeholder", encoding="utf-8")
-    (root / "migrations/versions/0002_project_membership.py").write_text(
-        'revision = "0002_project_membership"\n', encoding="utf-8"
+    (root / "migrations/versions/0005_daily_report_identity.py").write_text(
+        'revision = "0005_daily_report_identity"\n', encoding="utf-8"
     )
     (root / "deliverables/poster/tradeloop_poster.svg").write_text(
         '<svg xmlns="http://www.w3.org/2000/svg" width="800mm" height="1800mm"/>',
@@ -89,7 +89,7 @@ def make_release_tree(root: Path, *, with_database: bool = True) -> str:
                 role TEXT, status TEXT
             );
             CREATE TABLE alembic_version (version_num TEXT NOT NULL);
-            INSERT INTO alembic_version VALUES ('0002_project_membership');
+            INSERT INTO alembic_version VALUES ('0005_daily_report_identity');
             INSERT INTO projects VALUES (1, '保温杯新品出海');
             """
         )
@@ -160,7 +160,7 @@ def test_missing_database_is_warning_and_does_not_fail(tmp_path) -> None:
     assert report.exit_code == 0
 
 
-def test_database_revision_must_really_be_at_0002(tmp_path) -> None:
+def test_database_revision_must_really_be_at_0005(tmp_path) -> None:
     database_url = make_release_tree(tmp_path)
     connection = sqlite3.connect(tmp_path / "data/tradeloop.db")
     connection.execute("UPDATE alembic_version SET version_num = '0001_current_schema'")
@@ -176,7 +176,7 @@ def test_database_revision_must_really_be_at_0002(tmp_path) -> None:
 
     check = next(item for item in report.checks if item.name == "demo_data")
     assert check.status == "fail"
-    assert "0002" in check.summary
+    assert "0005" in check.summary
 
 
 def test_poster_qr_placeholder_is_warning_only(tmp_path) -> None:

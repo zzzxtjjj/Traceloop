@@ -1,3 +1,5 @@
+import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -7,6 +9,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from core.db import init_db  # noqa: E402
 from core.schemas import ProjectCreate  # noqa: E402
+from services.auth_service import set_password  # noqa: E402
 from services.imports import import_quotes, list_quote_artifacts  # noqa: E402
 from services.membership_service import (  # noqa: E402
     add_project_member,
@@ -18,16 +21,28 @@ from services.project_service import create_project, get_project_by_name  # noqa
 from services.review_service import import_reviews, list_review_batches  # noqa: E402
 
 
-def get_or_create_demo_user(display_name: str, email: str):
-    return get_user_by_email(email) or create_user(display_name, email)
+def get_or_create_demo_user(display_name: str, email: str, password: str):
+    user = get_user_by_email(email) or create_user(display_name, email)
+    if not user.password_hash:
+        set_password(user.id, password)
+    return user
 
 
 def main() -> None:
     init_db()
-    owner = get_or_create_demo_user("演示项目负责人", "owner@tradeloop.demo")
-    procurement = get_or_create_demo_user("演示采购", "procurement@tradeloop.demo")
-    operations = get_or_create_demo_user("演示运营", "operations@tradeloop.demo")
-    quality = get_or_create_demo_user("演示品控", "quality@tradeloop.demo")
+    demo_password = os.getenv("DEMO_PASSWORD", "").strip() or secrets.token_urlsafe(12)
+    owner = get_or_create_demo_user(
+        "演示项目负责人", "owner@tradeloop.demo", demo_password
+    )
+    procurement = get_or_create_demo_user(
+        "演示采购", "procurement@tradeloop.demo", demo_password
+    )
+    operations = get_or_create_demo_user(
+        "演示运营", "operations@tradeloop.demo", demo_password
+    )
+    quality = get_or_create_demo_user(
+        "演示品控", "quality@tradeloop.demo", demo_password
+    )
     project = get_project_by_name("保温杯新品出海")
     if project is None:
         project = create_project(
@@ -62,6 +77,7 @@ def main() -> None:
             batch_name="包装改进后（模拟）",
         )
     print(f"Demo project ready: id={project.id}, access_code=demo2026")
+    print("Demo login password is supplied through DEMO_PASSWORD or generated for this run.")
 
 
 if __name__ == "__main__":

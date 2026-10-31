@@ -199,3 +199,48 @@ def test_page_never_displays_api_key_or_offers_live_test_button(monkeypatch) -> 
     assert secret not in str(app)
     assert all("在线测试" not in button.label for button in app.button)
     assert all(item.label != "API Key" for item in app.metric)
+    assert any("页面不提供在线测试按钮" in item.value for item in app.caption)
+
+
+def test_decision_passport_renders_evidence_mode_and_next_action(monkeypatch) -> None:
+    finding = SimpleNamespace(
+        id=41,
+        finding_type="review:packaging_damage",
+        statement="包装破损反馈需要人工核对。",
+        epistemic_status="causal_hypothesis",
+        review_status="pending_review",
+        sample_size=3,
+        model_run_id=None,
+        missing_info_json='["订单号"]',
+        alternative_explanations_json='["运输损伤"]',
+        suggested_actions_json='["核对运输记录"]',
+    )
+    evidence = [
+        SimpleNamespace(
+            id=77,
+            locator_json='{"review_id":"R-41","csv_row":4}',
+            excerpt="The box arrived crushed.",
+        )
+    ]
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("review_page_under_test", PAGE)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        # The page stops early when no active project exists; helper definitions remain loaded.
+        pass
+
+    captured = []
+    monkeypatch.setattr(module.st, "markdown", captured.append)
+    monkeypatch.setattr(module.st, "dataframe", lambda rows, **_kwargs: captured.append(rows))
+    monkeypatch.setattr(module.st, "caption", captured.append)
+    module.render_decision_passport(finding=finding, evidence=evidence)
+
+    rows = next(item for item in captured if isinstance(item, list))
+    values = {row["字段"]: row["值"] for row in rows}
+    assert values["结论模式"] == "规则降级"
+    assert values["证据引用"] == "#77"
+    assert values["下一步行动"] == "核对运输记录"

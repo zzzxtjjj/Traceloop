@@ -1,4 +1,5 @@
 import json
+from dataclasses import dataclass
 from datetime import timedelta
 
 from sqlalchemy import select
@@ -15,6 +16,7 @@ from core.models import (
     DailyReport,
     Evidence,
     EvidenceLink,
+    ExtractedRequirement,
     Finding,
     ImprovementRecord,
     Insight,
@@ -24,7 +26,29 @@ from core.models import (
     utc_now,
 )
 from core.schemas import DailyRiskItem
+from services.auth_service import require_session_member
 from services.evidence_service import create_evidence, link_evidence
+from services.membership_service import require_project_member
+
+TASK_PUBLISH_ROLES = {"owner", "department_lead", "Project Owner", "Department Lead", "项目负责人"}
+TASK_REVIEW_ROLES = TASK_PUBLISH_ROLES | {
+    "reviewer_qa",
+    "Reviewer / QA",
+    "quality",
+    "品控",
+}
+
+
+@dataclass(frozen=True)
+class ProjectReviewSnapshot:
+    project_id: int
+    generated_at: object
+    task_counts: dict[str, int]
+    report_count: int
+    accepted_delivery_count: int
+    pending_delivery_count: int
+    blocker_report_count: int
+    risks: list[DailyRiskItem]
 
 THEME_OWNER_ROLE = {
     "packaging_damage": "品控",
@@ -102,6 +126,92 @@ def create_task_from_finding(
                 relation_type="source_for",
                 session=db,
             )
+        return task
+
+
+def create_task_from_requirement(
+    *,
+    project_id: int,
+    requirement_id: int,
+    session_token: str,
+    session: Session | None = None,
+) -> Task:
+    """Convert an AI requirement draft into a separate, unpublished Task draft."""
+    with session_context(session) as db:
+        _actor, _membership = require_session_member(session_token, project_id, session=db)
+        requirement = db.get(ExtractedRequirement, requirement_id)
+        if not requirement or requirement.project_id != project_id:
+            raise CrossProjectReferenceError("需求不属于当前项目。")
+        if not requirement.source_evidence_id:
+            raise EvidenceRequiredError("需求缺少真实 Evidence，不能创建任务草稿。")
+        existing = db.scalar(
+            select(Task).where(
+                Task.project_id == project_id,
+                Task.source_type == "extracted_requirement",
+                Task.source_id == requirement_id,
+            )
+        )
+        if existing:
+            return existing
+        task = Task(
+            project_id=project_id,
+            source_type="extracted_requirement",
+            source_id=requirement_id,
+            title=requirement.statement.split("\n", 1)[0][:200],
+            owner_role=requirement.owner_role,
+            status="draft",
+            acceptance_criteria_json=requirement.acceptance_criteria_json,
+            dependency="AI 草稿必须经过授权发布和人工验收。",
+            due_at=utc_now() + timedelta(days=3),
+            confirmed=False,
+        )
+        db.add(task)
+        db.flush()
+        requirement.task_id = task.id
+        link_evidence(
+            project_id=project_id,
+            evidence_id=requirement.source_evidence_id,
+            target_type="task",
+            target_id=task.id,
+            relation_type="source_for",
+            session=db,
+        )
+        db.flush()
+        return task
+
+
+def publish_task(
+    *,
+    project_id: int,
+    task_id: int,
+    session_token: str,
+    session: Session | None = None,
+) -> Task:
+    """Publish a draft only after a server-side role check."""
+    with session_context(session) as db:
+        _actor, membership = require_session_member(session_token, project_id, session=db)
+        if membership.role not in TASK_PUBLISH_ROLES:
+            raise InvalidStateTransitionError("当前角色不能发布正式任务。")
+        task = db.get(Task, task_id)
+        if not task or task.project_id != project_id:
+            raise CrossProjectReferenceError("任务不属于当前项目。")
+        if task.status != "draft" or task.confirmed:
+            raise InvalidStateTransitionError("只有未发布任务草稿可以发布。")
+        criteria = json.loads(task.acceptance_criteria_json)
+        if not criteria:
+            raise ValueError("任务缺少验收标准，不能发布。")
+        task.confirmed = True
+        task.status = "todo"
+        db.add(
+            AuditEvent(
+                project_id=project_id,
+                actor_role=membership.role,
+                action="task_published",
+                entity_type="task",
+                entity_id=task.id,
+            )
+        )
+        db.flush()
         return task
 
 
@@ -258,6 +368,7 @@ def submit_task_delivery(
     submitted_by_role: str,
     content: str,
     evidence_excerpt: str,
+    submitted_by_user_id: int | None = None,
     session: Session | None = None,
 ) -> TaskSubmission:
     if not content.strip():
@@ -268,6 +379,8 @@ def submit_task_delivery(
         task = db.get(Task, task_id)
         if not task or task.project_id != project_id:
             raise CrossProjectReferenceError("任务不存在或不属于当前项目。")
+        if submitted_by_user_id is not None:
+            require_project_member(project_id, submitted_by_user_id, session=db)
         if not task.confirmed or task.status not in {"todo", "doing", "blocked"}:
             raise InvalidStateTransitionError("当前任务不能提交验收。")
         if submitted_by_role not in {task.owner_role, "项目负责人"}:
@@ -284,6 +397,7 @@ def submit_task_delivery(
         submission = TaskSubmission(
             project_id=project_id,
             task_id=task.id,
+            submitted_by_user_id=submitted_by_user_id,
             submitted_by_role=submitted_by_role,
             content=content.strip(),
             evidence_id=evidence.id,
@@ -311,6 +425,29 @@ def submit_task_delivery(
         )
         db.flush()
         return submission
+
+
+def submit_task_delivery_as_user(
+    *,
+    project_id: int,
+    task_id: int,
+    session_token: str,
+    content: str,
+    evidence_excerpt: str,
+    session: Session | None = None,
+) -> TaskSubmission:
+    """Submit delivery with user identity and role resolved from the server session."""
+    with session_context(session) as db:
+        actor, membership = require_session_member(session_token, project_id, session=db)
+        return submit_task_delivery(
+            project_id=project_id,
+            task_id=task_id,
+            submitted_by_user_id=actor.id,
+            submitted_by_role=membership.role,
+            content=content,
+            evidence_excerpt=evidence_excerpt,
+            session=db,
+        )
 
 
 def review_task_submission(
@@ -364,11 +501,58 @@ def review_task_submission(
         return submission
 
 
+def review_task_submission_as_user(
+    *,
+    project_id: int,
+    submission_id: int,
+    session_token: str,
+    decision: str,
+    note: str,
+    session: Session | None = None,
+) -> TaskSubmission:
+    """Review a delivery using the authenticated user and persisted role."""
+    if decision not in {"accepted", "rejected"}:
+        raise InvalidStateTransitionError("验收决定只能是接受或驳回。")
+    if decision == "rejected" and not note.strip():
+        raise ValueError("驳回交付时必须填写理由。")
+    with session_context(session) as db:
+        actor, membership = require_session_member(session_token, project_id, session=db)
+        if membership.role not in TASK_REVIEW_ROLES:
+            raise InvalidStateTransitionError("当前角色不能执行人工验收。")
+        submission = db.get(TaskSubmission, submission_id)
+        if not submission or submission.project_id != project_id:
+            raise CrossProjectReferenceError("交付记录不存在或不属于当前项目。")
+        if submission.submitted_by_user_id == actor.id:
+            raise InvalidStateTransitionError("任务提交者不能验收自己的成果。")
+        if submission.review_status != "pending_review":
+            raise InvalidStateTransitionError("该交付已经完成验收。")
+        task = db.get(Task, submission.task_id)
+        if not task or task.project_id != project_id:
+            raise CrossProjectReferenceError("任务不存在或不属于当前项目。")
+        submission.review_status = decision
+        submission.reviewed_by = str(actor.id)
+        submission.review_note = note.strip()
+        submission.reviewed_at = utc_now()
+        task.status = "completed" if decision == "accepted" else "todo"
+        db.add(
+            AuditEvent(
+                project_id=project_id,
+                actor_role=membership.role,
+                action=f"task_delivery_{decision}",
+                entity_type="task_submission",
+                entity_id=submission.id,
+            )
+        )
+        db.flush()
+        return submission
+
+
 def submit_daily_report(
     *,
     project_id: int,
     role: str,
     task_id: int | None,
+    submitted_by_user_id: int | None = None,
     completed: str,
     evidence_text: str = "",
     blocker: str = "",
@@ -385,6 +569,7 @@ def submit_daily_report(
             raise InvalidStateTransitionError("当前岗位不能提交该任务的日报。")
         report = DailyReport(
             project_id=project_id,
+            submitted_by_user_id=submitted_by_user_id,
             role=role,
             task_id=task_id,
             completed=completed.strip(),
@@ -428,6 +613,32 @@ def submit_daily_report(
         )
         db.flush()
         return report
+
+
+def submit_daily_report_as_user(
+    *,
+    project_id: int,
+    task_id: int | None,
+    session_token: str,
+    completed: str,
+    evidence_text: str = "",
+    blocker: str = "",
+    next_plan: str = "",
+    session: Session | None = None,
+) -> DailyReport:
+    with session_context(session) as db:
+        actor, membership = require_session_member(session_token, project_id, session=db)
+        return submit_daily_report(
+            project_id=project_id,
+            role=membership.role,
+            task_id=task_id,
+            submitted_by_user_id=actor.id,
+            completed=completed,
+            evidence_text=evidence_text,
+            blocker=blocker,
+            next_plan=next_plan,
+            session=db,
+        )
 
 
 def list_task_submissions(
@@ -533,4 +744,40 @@ def build_daily_risk_review(
                     )
                 )
         return risks
+
+
+def get_project_review_snapshot(
+    *,
+    project_id: int,
+    session_token: str,
+    session: Session | None = None,
+) -> ProjectReviewSnapshot:
+    """Return a deterministic, member-scoped project review snapshot for B7."""
+    with session_context(session) as db:
+        require_session_member(session_token, project_id, session=db)
+        tasks = list(db.scalars(select(Task).where(Task.project_id == project_id)))
+        reports = list(
+            db.scalars(select(DailyReport).where(DailyReport.project_id == project_id))
+        )
+        submissions = list(
+            db.scalars(select(TaskSubmission).where(TaskSubmission.project_id == project_id))
+        )
+        risks = build_daily_risk_review(project_id, session=db)
+        task_counts: dict[str, int] = {}
+        for task in tasks:
+            task_counts[task.status] = task_counts.get(task.status, 0) + 1
+        return ProjectReviewSnapshot(
+            project_id=project_id,
+            generated_at=utc_now(),
+            task_counts=task_counts,
+            report_count=len(reports),
+            accepted_delivery_count=sum(
+                item.review_status == "accepted" for item in submissions
+            ),
+            pending_delivery_count=sum(
+                item.review_status == "pending_review" for item in submissions
+            ),
+            blocker_report_count=sum(bool(item.blocker.strip()) for item in reports),
+            risks=risks,
+        )
 
