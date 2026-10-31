@@ -156,7 +156,7 @@ def test_membership_migration_supports_fresh_and_already_stamped_0001_databases(
     )
     with fresh_engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0002_project_membership"
+            "0005_daily_report_identity"
         )
 
     legacy_url = f"sqlite:///{(tmp_path / 'stamped-0001.db').as_posix()}"
@@ -184,7 +184,7 @@ def test_membership_migration_supports_fresh_and_already_stamped_0001_databases(
     with legacy_engine.connect() as connection:
         assert connection.scalar(select(Project.name)) == "Preserved legacy project"
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0002_project_membership"
+            "0005_daily_report_identity"
         )
 
 

@@ -132,7 +132,10 @@ def render_model_configuration_status(readiness) -> None:
 
 
 def render_closed_loop_trace(trace: FindingTrace) -> None:
-    st.markdown("**闭环追踪**")
+    st.markdown("**Evidence Graph / 闭环追踪**")
+    st.caption(
+        "Evidence → Finding → 人工审核 → Task → Delivery → Recheck；状态只显示数据库中的真实关系。"
+    )
     source_col, task_col, delivery_col, recheck_col = st.columns(4)
     source_col.metric("原始证据", trace.evidence_status)
     task_col.metric("改进任务", trace.task_status)
@@ -194,6 +197,75 @@ def render_closed_loop_trace(trace: FindingTrace) -> None:
         if improvement.share_delta is not None:
             st.caption(f"占比变化：{improvement.share_delta:+.1%}")
     st.warning(improvement.limitation_note)
+
+
+def render_decision_passport(*, finding, evidence, ai_run=None, trace=None) -> None:
+    """Render an auditable summary without creating new business state."""
+    st.markdown("**AI Decision Passport / AI 决策护照**")
+    model_run_id = getattr(finding, "model_run_id", None)
+    mode = "规则降级" if not model_run_id else "模型结果"
+    missing = json.loads(getattr(finding, "missing_info_json", "[]"))
+    actions = json.loads(getattr(finding, "suggested_actions_json", "[]"))
+    passport = {
+        "结论 ID": f"Finding #{finding.id}",
+        "结论模式": mode,
+        "模型运行": f"AiRun #{model_run_id}" if model_run_id else "-",
+        "证据引用": ", ".join(f"#{item.id}" for item in evidence) or "missing",
+        "未知或缺失信息": "；".join(missing) if missing else "未记录",
+        "人工审核": getattr(finding, "review_status", "unknown"),
+        "下一步行动": "；".join(actions) if actions else "需要人工审核",
+    }
+    if ai_run is not None and model_run_id:
+        passport["模型"] = read_result_value(
+            ai_run, "model", "model_name", default="configured model"
+        )
+        passport["Prompt 版本"] = read_result_value(ai_run, "prompt_version", default="-")
+        passport["运行状态"] = read_result_value(ai_run, "status", default="unknown")
+    st.dataframe(
+        [{"字段": key, "值": value} for key, value in passport.items()],
+        hide_index=True,
+        use_container_width=True,
+    )
+    if trace is not None:
+        st.caption(
+            "Evidence Graph 状态："
+            f"evidence={trace.evidence_status} · task={trace.task_status} · "
+            f"delivery={trace.delivery_status} · recheck={trace.recheck_status}"
+        )
+
+
+def render_improvement_replay(
+    *, comparison, baseline_label: str, followup_label: str, theme_label: str
+) -> None:
+    """Show the measured feedback-to-recheck chain without implying causality."""
+    st.markdown("**Improvement Replay / 改进复盘**")
+    st.caption(
+        "同一主题、同一统计口径、不同批次；复检结果用于观察变化，不自动证明措施造成变化。"
+    )
+    steps = [
+        ("01", "首批反馈", f"{baseline_label} · n={comparison.baseline_sample_size}"),
+        ("02", "人工确认", f"主题：{theme_label} · 形成待办行动"),
+        ("03", "执行与验收", "任务、交付证据和人工验收留在闭环中"),
+        ("04", "后续复检", f"{followup_label} · n={comparison.followup_sample_size}"),
+    ]
+    cols = st.columns(4)
+    for column, (number, title, detail) in zip(cols, steps, strict=True):
+        column.markdown(f"**{number} · {title}**")
+        column.caption(detail)
+    first, second, delta = st.columns(3)
+    first.metric(
+        "基线主题占比",
+        f"{comparison.baseline_count}/{comparison.baseline_sample_size}",
+        f"{comparison.baseline_share:.1%}",
+    )
+    second.metric(
+        "复检主题占比",
+        f"{comparison.followup_count}/{comparison.followup_sample_size}",
+        f"{comparison.followup_share:.1%}",
+    )
+    delta.metric("占比变化", f"{comparison.share_delta:+.1%}")
+    st.info(comparison.conclusion)
+    st.warning(f"限制：{comparison.limitation_note}")
 
 init_db()
 st.set_page_config(page_title="差评改进 · TradeLoop", page_icon="〰️", layout="wide")
@@ -367,7 +439,10 @@ if findings:
         theme = finding.finding_type.rsplit(":", maxsplit=1)[-1]
         label = THEME_LABELS.get(theme, theme)
         classification_label = "真实 AI" if finding.model_run_id else "规则分类"
-        with st.expander(f"{label} · {classification_label} · {finding.review_status}"):
+        with st.expander(
+            f"{label} · {classification_label} · {finding.review_status}",
+            expanded=True,
+        ):
             st.write(finding.statement)
             left, middle, right = st.columns(3)
             left.metric("样本量", finding.sample_size or 0)
@@ -399,6 +474,7 @@ if findings:
                     language=None,
                 )
 
+            trace = None
             if finding.review_status in {"accepted", "revised", "rejected"}:
                 try:
                     trace = get_finding_trace(
@@ -409,6 +485,13 @@ if findings:
                     render_user_error(exc, fallback="闭环追踪读取失败。")
                 else:
                     render_closed_loop_trace(trace)
+
+            render_decision_passport(
+                finding=finding,
+                evidence=evidence,
+                ai_run=latest_ai_run,
+                trace=trace,
+            )
 
             if finding.review_status == "pending_review":
                 note = st.text_area(
@@ -531,20 +614,12 @@ if len(batches) >= 2:
             except (TradeLoopError, ValueError) as exc:
                 render_user_error(exc, fallback="复检失败，请检查批次和主题。")
             else:
-                first, second, delta = st.columns(3)
-                first.metric(
-                    "基线",
-                    f"{comparison.baseline_count}/{comparison.baseline_sample_size}",
-                    f"{comparison.baseline_share:.1%}",
+                render_improvement_replay(
+                    comparison=comparison,
+                    baseline_label=batch_labels[baseline_id],
+                    followup_label=batch_labels[followup_id],
+                    theme_label=THEME_LABELS.get(theme, theme),
                 )
-                second.metric(
-                    "复检",
-                    f"{comparison.followup_count}/{comparison.followup_sample_size}",
-                    f"{comparison.followup_share:.1%}",
-                )
-                delta.metric("占比变化", f"{comparison.share_delta:+.1%}")
-                st.write(comparison.conclusion)
-                st.warning(comparison.limitation_note)
 
 render_footer()
 

@@ -262,3 +262,44 @@ class ReviewImportOutcome(BaseModel):
     duplicate_count: int
     duplicate_file: bool = False
 
+
+class DocumentAnalysisRequest(BaseModel):
+    project_id: int = Field(gt=0)
+    artifact_ids: list[int] = Field(min_length=1)
+    product_id: int | None = Field(default=None, gt=0)
+    target_market: str = Field(min_length=2, max_length=20)
+    analysis_type: str = Field(min_length=1, max_length=80)
+    user_instruction: str | None = Field(default=None, max_length=4000)
+
+
+class DocumentSource(BaseModel):
+    artifact_id: int = Field(gt=0)
+    locator: dict[str, object] = Field(min_length=1)
+    excerpt: str = Field(min_length=1, max_length=5000)
+
+
+class ExtractedRequirementOutput(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=5000)
+    target_role: str = Field(min_length=1, max_length=40)
+    priority: Literal["low", "medium", "high", "critical"] = "medium"
+    source: DocumentSource
+    status: Literal["draft"] = "draft"
+
+
+class DocumentAnalysisOutput(BaseModel):
+    analysis_id: int = Field(gt=0)
+    status: Literal["success", "failed", "partial"]
+    summary: str = ""
+    requirements: list[ExtractedRequirementOutput] = Field(default_factory=list)
+    unknowns: list[str] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    follow_up_questions: list[str] = Field(default_factory=list)
+
+
+class StructuredErrorResponse(BaseModel):
+    code: str
+    message: str
+    retryable: bool = False
+

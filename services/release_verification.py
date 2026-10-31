@@ -27,7 +27,7 @@ REQUIRED_FILES = (
     "scripts/seed_demo.py",
 )
 REQUIRED_PAGES = tuple(f"0{number}_" for number in range(1, 6))
-EXPECTED_REVISION = "0002_project_membership"
+EXPECTED_REVISION = "0005_daily_report_identity"
 EXPECTED_DEMO_PROJECT = "保温杯新品出海"
 EXPECTED_DEMO_EMAILS = (
     "owner@tradeloop.demo",
@@ -88,14 +88,14 @@ def _check_pages(root: Path) -> ReleaseCheck:
 
 
 def _check_alembic_revision(root: Path) -> ReleaseCheck:
-    revision_file = root / "migrations" / "versions" / "0002_project_membership.py"
+    revision_file = root / "migrations" / "versions" / "0005_daily_report_identity.py"
     if not revision_file.is_file():
-        return ReleaseCheck("alembic_revision", "fail", "缺少 0002 迁移文件。")
+        return ReleaseCheck("alembic_revision", "fail", "缺少 0005 日报身份迁移文件。")
     source = revision_file.read_text(encoding="utf-8")
     match = re.search(r'^revision\s*=\s*["\']([^"\']+)["\']', source, re.MULTILINE)
     if not match or match.group(1) != EXPECTED_REVISION:
-        return ReleaseCheck("alembic_revision", "fail", "最新迁移版本不是预期的 0002。")
-    return ReleaseCheck("alembic_revision", "pass", "Alembic 最新迁移版本为 0002。")
+        return ReleaseCheck("alembic_revision", "fail", "最新迁移版本不是预期的 0005。")
+    return ReleaseCheck("alembic_revision", "pass", "Alembic 最新迁移版本为 0005。")
 
 
 def _sqlite_path(database_url: str, root: Path) -> Path | None:
@@ -137,7 +137,7 @@ def _check_demo_data(root: Path, database_url: str) -> ReleaseCheck:
                 "SELECT version_num FROM alembic_version LIMIT 1"
             ).fetchone()
             if not database_revision or database_revision[0] != EXPECTED_REVISION:
-                return ReleaseCheck("demo_data", "fail", "数据库尚未升级到 Alembic 0002。")
+                return ReleaseCheck("demo_data", "fail", "数据库尚未升级到 Alembic 0005。")
             project_row = connection.execute(
                 "SELECT id FROM projects WHERE name = ?", (EXPECTED_DEMO_PROJECT,)
             ).fetchone()

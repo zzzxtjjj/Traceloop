@@ -29,8 +29,21 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     display_name: Mapped[str] = mapped_column(String(120))
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    password_hash: Mapped[str | None] = mapped_column(String(256), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class ProjectMember(Base):
@@ -57,7 +70,84 @@ class Artifact(Base):
     original_filename: Mapped[str] = mapped_column(String(255))
     stored_path: Mapped[str] = mapped_column(Text, default="")
     sha256: Mapped[str] = mapped_column(String(64))
+    uploader_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    mime_type: Mapped[str] = mapped_column(String(120), default="application/octet-stream")
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    parent_artifact_id: Mapped[int | None] = mapped_column(
+        ForeignKey("artifacts.id"), nullable=True, index=True
+    )
+    parsing_status: Mapped[str] = mapped_column(String(30), default="pending")
+    storage_location: Mapped[str] = mapped_column(Text, default="")
     parse_status: Mapped[str] = mapped_column(String(30), default="valid")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class ChannelMessage(Base):
+    __tablename__ = "channel_messages"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "sender_id", "client_request_id", name="uq_channel_message_request"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    message_type: Mapped[str] = mapped_column(String(30), default="text")
+    content: Mapped[str] = mapped_column(Text)
+    reply_to_id: Mapped[int | None] = mapped_column(
+        ForeignKey("channel_messages.id"), nullable=True
+    )
+    artifact_id: Mapped[int | None] = mapped_column(
+        ForeignKey("artifacts.id"), nullable=True, index=True
+    )
+    client_request_id: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class DocumentExtraction(Base):
+    __tablename__ = "document_extractions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    artifact_id: Mapped[int] = mapped_column(ForeignKey("artifacts.id"), index=True)
+    parser_name: Mapped[str] = mapped_column(String(80))
+    parser_version: Mapped[str] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(30), index=True)
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    text_excerpt: Mapped[str] = mapped_column(Text, default="")
+    locator_json: Mapped[str] = mapped_column(Text, default="{}")
+    error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
+class ExtractedRequirement(Base):
+    __tablename__ = "extracted_requirements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    artifact_id: Mapped[int] = mapped_column(ForeignKey("artifacts.id"), index=True)
+    extraction_id: Mapped[int] = mapped_column(ForeignKey("document_extractions.id"), index=True)
+    statement: Mapped[str] = mapped_column(Text)
+    requirement_type: Mapped[str] = mapped_column(String(80), default="general")
+    owner_role: Mapped[str] = mapped_column(String(40), default="member")
+    acceptance_criteria_json: Mapped[str] = mapped_column(Text, default="[]")
+    source_locator_json: Mapped[str] = mapped_column(Text, default="{}")
+    source_excerpt: Mapped[str] = mapped_column(Text, default="")
+    source_evidence_id: Mapped[int | None] = mapped_column(
+        ForeignKey("evidence.id"), nullable=True, index=True
+    )
+    epistemic_status: Mapped[str] = mapped_column(String(30), default="unknown")
+    priority: Mapped[str] = mapped_column(String(20), default="medium")
+    ai_run_id: Mapped[int | None] = mapped_column(ForeignKey("ai_runs.id"), nullable=True)
+    review_status: Mapped[str] = mapped_column(String(30), default="draft", index=True)
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
@@ -108,6 +198,9 @@ class DailyReport(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    submitted_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
     role: Mapped[str] = mapped_column(String(30))
     task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), nullable=True)
     completed: Mapped[str] = mapped_column(Text)
@@ -183,8 +276,10 @@ class AiRun(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
     run_type: Mapped[str] = mapped_column(String(50))
+    provider: Mapped[str] = mapped_column(String(80), default="unknown")
     model: Mapped[str] = mapped_column(String(80))
     prompt_version: Mapped[str] = mapped_column(String(50))
+    schema_version: Mapped[str] = mapped_column(String(40), default="v1")
     input_hash: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(20))
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -331,6 +426,9 @@ class TaskSubmission(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), index=True)
+    submitted_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
     submitted_by_role: Mapped[str] = mapped_column(String(30))
     content: Mapped[str] = mapped_column(Text)
     evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence.id"), index=True)
