@@ -10,6 +10,7 @@ from core.db import init_db
 from core.errors import TradeLoopError
 from core.theme import apply_brand_theme, render_footer, render_page_header
 from core.ui import render_sidebar
+from services.app_preferences import runtime_config
 from services.finding_service import review_finding
 from services.model_readiness import check_model_readiness
 from services.review_service import (
@@ -46,7 +47,7 @@ AI_ERROR_MESSAGES = {
     "MODEL_RATE_LIMIT": "模型调用频率受限，请稍后重试。",
     "MODEL_PROVIDER_ERROR": "模型服务暂时不可用，请稍后重试。",
     "MODEL_BAD_RESPONSE": "模型服务返回了无法解析的响应。",
-    "MODEL_BAD_JSON": "模型输出未通过结构校验，未写入半成品 Finding。",
+    "MODEL_BAD_JSON": "模型输出未通过结构校验，未写入未通过验证的问题记录。",
     "MODEL_EVIDENCE_INVALID": "模型引用的评价 ID 或原文片段无效，未写入 Finding。",
     "MODEL_INPUT_LIMIT": "输入超过本次模型分析上限，未发起外部调用。",
     "MODEL_ANALYSIS_WRITE_FAILED": "模型结果写入失败，事务已回滚。",
@@ -71,11 +72,11 @@ def render_ai_run_summary(run) -> None:
     prompt_version = read_result_value(run, "prompt_version", default="-")
     status = read_result_value(run, "status", default="unknown")
     error_code = read_result_value(run, "error_code", default=None)
-    first, second, third, fourth = st.columns(4)
-    first.metric("AiRun ID", run_id)
-    second.metric("模型", model)
-    third.metric("Prompt 版本", prompt_version)
-    fourth.metric("运行状态", status)
+    with st.expander("分析记录（需要时查看）"):
+        st.write(f"运行编号：{run_id}")
+        st.write(f"使用模型：{model}")
+        st.write(f"分析方案：{prompt_version}")
+        st.write("结果：" + {"success": "分析成功", "failed": "分析失败"}.get(status, "处理中"))
     if error_code:
         error_message = AI_ERROR_MESSAGES.get(error_code, "模型调用失败。")
         st.error(f"error_code：{error_code} · {error_message}")
@@ -132,20 +133,16 @@ def render_model_configuration_status(readiness) -> None:
 
 
 def render_closed_loop_trace(trace: FindingTrace) -> None:
-    st.markdown("**闭环追踪**")
-    source_col, task_col, delivery_col, recheck_col = st.columns(4)
-    source_col.metric("原始证据", trace.evidence_status)
-    task_col.metric("改进任务", trace.task_status)
-    delivery_col.metric("交付验收", trace.delivery_status)
-    recheck_col.metric("后续复检", trace.recheck_status)
+    st.markdown("**处理进度：从问题到改进结果**")
+    st.caption("依次检查：评价原文 → 改进任务 → 材料验收 → 后续评价")
 
     if trace.evidence:
-        st.success(f"原始评价证据 available · {len(trace.evidence)} 条")
+        st.success(f"找到 {len(trace.evidence)} 条原始评价依据")
     else:
-        st.warning("原始评价证据 missing · 未找到可验证的原文关联。")
+        st.warning("没有找到原始评价依据，请补充后再确认。")
 
     if trace.task is None:
-        st.warning("改进任务 missing · 当前 Finding 尚未关联任务。")
+        st.warning("还没有改进任务。请先审核这个问题，再创建任务。")
     else:
         task = trace.task
         st.write(
@@ -153,7 +150,7 @@ def render_closed_loop_trace(trace: FindingTrace) -> None:
             f"状态：{task.status} · {'已发布' if task.confirmed else '草稿'}"
         )
         if not task.submissions:
-            st.info("交付验收 missing · 当前任务尚未提交交付材料。")
+            st.info("等待提交材料：执行人还没有提交交付物。")
         for submission in task.submissions:
             with st.expander(
                 f"交付 #{submission.id} · {submission.review_status} · "
@@ -163,7 +160,7 @@ def render_closed_loop_trace(trace: FindingTrace) -> None:
                 st.code(submission.evidence_excerpt, language=None)
                 st.caption(f"提交岗位：{submission.submitted_by_role}")
                 if submission.review_status == "pending_review":
-                    st.info("验收 pending · 等待其他有权角色人工验收。")
+                    st.info("等待人工验收：请由有验收权限的其他人员检查材料。")
                 else:
                     st.write(f"审核人：{submission.reviewed_by or '未记录'}")
                     st.write(f"审核意见：{submission.review_note or '未填写'}")
@@ -183,7 +180,7 @@ def render_closed_loop_trace(trace: FindingTrace) -> None:
         f"({improvement.baseline_share:.1%})"
     )
     if improvement.followup is None:
-        st.info("后续复检 pending · 尚未关联可比较的后续评价批次。")
+        st.info("等待后续评价：导入新一批评价后，再检查问题是否减少。")
     else:
         followup_count = improvement.followup_count or 0
         followup_share = improvement.followup_share or 0.0
@@ -200,8 +197,12 @@ st.set_page_config(page_title="差评改进 · TradeLoop", page_icon="〰️", l
 apply_brand_theme()
 render_page_header(
     "QUALITY INSIGHTS · 客户声音",
-    "差评证据链与改进复检",
+    "客户评价与改进",
     "从评价原文出发，区分统计、原因假设与人工结论，再连接改进任务和后续复检。",
+)
+st.info(
+    "操作顺序：① 导入评价 → ② 选择规则或 AI 分析 → ③ 核对原文并审核问题 → "
+    "④ 发布改进任务 → ⑤ 用新评价检查变化。"
 )
 project_id, role = render_sidebar()
 if project_id is None:
@@ -266,14 +267,13 @@ analysis_mode = st.radio(
     horizontal=True,
     help="规则分类可复现；AI 分类必须通过结构校验和人工审核。",
 )
-model_readiness = check_model_readiness(settings)
-render_model_configuration_status(model_readiness)
+model_readiness = check_model_readiness(runtime_config(settings))
 model_configured = model_readiness.configured
 if model_configured:
-    st.success(f"模型本地配置已就绪：{model_readiness.model_name}；尚未真实联网验证。")
+    st.caption("AI 已配置。点击分析会使用当前服务；更换服务请前往“设置”。")
 else:
     st.warning(
-        "模型配置不完整或无效。请先运行离线检查；选择真实 AI 时将明确降级为规则分类。"
+        "模型配置不完整或无效。真实 AI 分析不可用；不会自动改用规则结果。"
     )
 
 if st.button("运行所选分类", type="primary"):
@@ -290,28 +290,9 @@ if st.button("运行所选分类", type="primary"):
                 f"规则分类已生成 {len(summaries)} 个主题统计；重复运行不会覆盖人工审核。"
             )
     elif not model_configured:
-        try:
-            summaries = analyze_review_batch(
-                project_id=project_id,
-                batch_id=selected_batch_id,
-            )
-        except (TradeLoopError, ValueError) as exc:
-            render_user_error(exc, fallback="规则分类失败，请检查评价批次。")
-        else:
-            st.warning(
-                f"真实 AI 未配置，已降级为可复现规则分类并生成 {len(summaries)} 个主题统计。"
-            )
+        st.error("模型未配置，未发起 AI 请求，也未生成 AI 分析结果。请在“设置”中配置模型服务。")
     elif analyze_review_batch_with_model is None:
-        st.error("真实 AI 分析接口尚未就绪，评价批次已保留，未写入 AI Finding。")
-        try:
-            summaries = analyze_review_batch(
-                project_id=project_id,
-                batch_id=selected_batch_id,
-            )
-        except (TradeLoopError, ValueError) as exc:
-            render_user_error(exc, fallback="规则分类失败，请检查评价批次。")
-        else:
-            st.warning(f"已降级为规则分类并生成 {len(summaries)} 个主题统计。")
+        st.error("真实 AI 分析接口未就绪。评价批次已保留，没有生成替代结果。")
     else:
         try:
             result = analyze_review_batch_with_model(
@@ -321,19 +302,7 @@ if st.button("运行所选分类", type="primary"):
         except TradeLoopError as exc:
             code = getattr(exc, "code", "TRADELOOP_ERROR")
             render_user_error(exc, fallback=AI_ERROR_MESSAGES.get(code, "模型调用失败。"))
-            st.info("评价批次已保留；失败的模型输出不会写入半成品 Finding。")
-            try:
-                summaries = analyze_review_batch(
-                    project_id=project_id,
-                    batch_id=selected_batch_id,
-                )
-            except (TradeLoopError, ValueError) as fallback_exc:
-                render_user_error(
-                    fallback_exc,
-                    fallback="规则降级也未完成，请检查评价批次。",
-                )
-            else:
-                st.warning(f"已降级为规则分类并生成 {len(summaries)} 个主题统计。")
+            st.info("本次真实 AI 请求失败；没有生成规则替代结果，原评价批次仍然保留。")
         except ValueError as exc:
             render_user_error(exc, fallback="AI 结果校验失败，未写入关键业务状态。")
             st.info("评价批次已保留；无效结构不会写入关键业务状态。")
@@ -342,7 +311,7 @@ if st.button("运行所选分类", type="primary"):
             status = read_result_value(result, "status", default="success")
             st.success(
                 f"真实 AI 分类完成：状态 {status}，"
-                f"生成 {len(finding_ids)} 个待审核 Finding。"
+                f"生成 {len(finding_ids)} 个待审核问题。"
             )
             render_ai_run_summary(result)
 
@@ -362,24 +331,28 @@ else:
 
 findings = list_batch_findings(project_id, selected_batch_id)
 if findings:
-    st.markdown("### 3 · 发现、证据与人工审核")
+    st.markdown("### 3 · 查看问题、核对原文并审核")
     for finding in findings:
         theme = finding.finding_type.rsplit(":", maxsplit=1)[-1]
         label = THEME_LABELS.get(theme, theme)
         classification_label = "真实 AI" if finding.model_run_id else "规则分类"
-        with st.expander(f"{label} · {classification_label} · {finding.review_status}"):
+        review_label = {
+            "pending_review": "待你确认", "accepted": "已确认",
+            "revised": "已修改确认", "rejected": "已忽略",
+        }.get(finding.review_status, "待处理")
+        with st.expander(f"{label} · {review_label}"):
             st.write(finding.statement)
-            left, middle, right = st.columns(3)
-            left.metric("样本量", finding.sample_size or 0)
-            middle.metric("风险状态", finding.epistemic_status)
-            right.metric("人工审核", finding.review_status)
+            st.caption(
+                f"分析范围：{finding.sample_size or 0} 条评价 · "
+                f"来源：{classification_label} · {review_label}"
+            )
             if finding.model_run_id:
                 st.warning(
-                    f"该 Finding 来自 AiRun #{finding.model_run_id}。模型内容是待审核的原因假设，"
+                    "这是 AI 提出的待确认问题，"
                     "不构成供应商、物流或员工责任认定。"
                 )
             else:
-                st.caption("该 Finding 来自可复现规则分类，不代表 AI 判断。")
+                st.caption("该问题来自可复现规则分类，不代表 AI 判断。")
 
             missing = json.loads(finding.missing_info_json)
             alternatives = json.loads(finding.alternative_explanations_json)
@@ -431,7 +404,7 @@ if findings:
                             note=note,
                         )
                     except (TradeLoopError, ValueError) as exc:
-                        render_user_error(exc, fallback="Finding 接受失败，请检查审核信息。")
+                        render_user_error(exc, fallback="问题确认失败，请检查审核信息。")
                     else:
                         st.rerun()
                 if revise_col.button("修改并接受", key=f"revise_{finding.id}"):
@@ -445,7 +418,7 @@ if findings:
                             revised_statement=revised,
                         )
                     except (TradeLoopError, ValueError) as exc:
-                        render_user_error(exc, fallback="Finding 修改失败，请检查审核内容。")
+                        render_user_error(exc, fallback="问题修改失败，请检查审核内容。")
                     else:
                         st.rerun()
                 if reject_col.button("驳回", key=f"reject_{finding.id}"):
@@ -458,7 +431,7 @@ if findings:
                             note=note,
                         )
                     except (TradeLoopError, ValueError) as exc:
-                        render_user_error(exc, fallback="Finding 驳回失败，请填写审核理由。")
+                        render_user_error(exc, fallback="问题驳回失败，请填写审核理由。")
                     else:
                         st.rerun()
             elif finding.review_status in {"accepted", "revised"}:
@@ -499,7 +472,7 @@ else:
     st.warning("当前批次尚未分析。")
 
 if len(batches) >= 2:
-    st.markdown("### 4 · 同口径复检")
+    st.markdown("### 4 · 比较改进前后的评价")
     baseline_id = st.selectbox(
         "基线批次",
         options=list(batch_labels),

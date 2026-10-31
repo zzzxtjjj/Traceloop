@@ -1,5 +1,28 @@
 # TradeLoop V1 implementation status
 
+## Workspace architecture addition — documentation only, 2026-10-31
+
+The target now includes a project workspace with chat, shared files, document requirements,
+AI task drafts, approved publishing, daily updates and evidence-backed project reviews.
+Existing User/ProjectMember, Artifact, Task, DailyReport, Evidence and AiRun are to be reused.
+Persistent chat, a general authorized file library, document requirement extraction,
+expanded roles and trustworthy independent user sessions are not implemented by this update.
+See [workspace design](PROJECT_WORKSPACE_ARCHITECTURE.md),
+[new task checklist](WORKSPACE_TASK_CHECKLIST.md),
+[Partner A prompt](PARTNER_A_EXECUTION_PROMPT.md) and
+[Partner B prompt](PARTNER_B_EXECUTION_PROMPT.md).
+This turn ran no tests, migrations, seed or model calls. Historical test evidence is unchanged.
+
+## 2026-10-31 local development update
+
+The current local worktree passes 201 offline tests and Ruff. New backend services provide
+bilingual model revisions, version-scoped rule snapshots, authorized chain/diff queries,
+human review, rule freshness checks, public JSONL conversion and labelled-sample metrics.
+See [BACKEND_HANDOFF.md](BACKEND_HANDOFF.md) for callable interfaces, evidence and limits.
+These changes are not yet a clean pushed release candidate. The older counts below are
+historical. The new model workflow is not yet connected to the manual localization page;
+real public-dataset evaluation has not run. Previous live bilingual evidence used synthetic facts.
+
 Updated: 2026-10-29
 
 Working branch: `integration/parallel-progress-20261029`
@@ -41,7 +64,7 @@ Working branch: `integration/parallel-progress-20261029`
 - In this round's unconfigured environment, the offline check reports `configured=false`, `live_verified=false` and missing `MODEL_API_KEY,MODEL_NAME`, then exits with code `1`. This is the expected pre-configuration state, not an application fault.
 - Input character/review budgets are enforced and `MODEL_MAX_ATTEMPTS` defaults to `1`. The project never runs `check_model_api.py --live` automatically; live verification requires explicit user permission.
 - Local setup and safe-check instructions are in [MODEL_API_SETUP.md](MODEL_API_SETUP.md).
-- When no model is configured, review analysis uses a transparent rule-based baseline. The UI must not label that result as AI.
+- Rule-based review analysis remains a separate, explicitly selected mode. Selecting real AI never falls back to rule output; see [LIVE_AI_PROGRESS.md](LIVE_AI_PROGRESS.md).
 - User and ProjectMember persistence, member-scoped project listing and owner-only member addition are implemented. A valid access code does not make a non-member a project member.
 - The local user selector is an explicit hackathon identity context, not login authentication. Passing a user ID through service calls is not a production session or trusted identity boundary.
 - The shared permission/error UI and project checks provide consistent, non-leaking feedback, but OAuth/SSO, server-side authentication sessions, passkeys and enterprise RBAC are not implemented.

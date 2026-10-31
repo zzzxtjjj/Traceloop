@@ -28,6 +28,10 @@ render_page_header(
     "让价格、起订量、交期与质量风险在同一张商务票据上清晰可比。",
 )
 
+st.info(
+    "操作顺序：① 上传报价 → ② 比较价格与交期 → ③ 查看原始依据 → "
+    "④ 由负责人确认供应商。排名仅供参考。"
+)
 project_id, role = render_sidebar()
 if project_id is None:
     st.warning("请在左侧输入访问码，或先到项目首页创建项目。")

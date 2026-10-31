@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+from datetime import date
 from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
@@ -30,6 +31,9 @@ def _source_reference(rule: RuleDefinition) -> str:
 def _source_is_usable(rule: RuleDefinition) -> tuple[bool, str]:
     if rule.source_type == "unverified":
         return False, "规则来源尚未核实，仅保留为待确认项。"
+    age = (date.today() - rule.source_checked_at).days
+    if age < 0 or age > 180:
+        return False, "规则核对日期异常或超过180天复核期限，需要人工更新来源。"
     reference = _source_reference(rule)
     if not reference or not rule.version.strip():
         return False, "规则缺少来源或版本信息。"

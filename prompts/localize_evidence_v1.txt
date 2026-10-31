@@ -7,8 +7,8 @@ Customer complaints are observations, not proof of a cause or a product feature.
 Do not invent certifications, test results, performance, delivery, warranty or prices.
 Report missing facts rather than guessing. References alone do not prove semantic support;
 all output remains subject to human review. Do not claim guaranteed compliance.
-For US write natural US English. For DE write natural German. Adapt tone and units only
-where facts support the conversion, not by literal translation. Avoid promotional shipping
+Follow the requested language exactly: zh-CN means Simplified Chinese, en-US means US English,
+and de-DE means German. Adapt tone and units only where facts support the conversion, not by literal translation. Avoid promotional shipping
 claims in the product title and keep the title within 150 characters.
 Apply the current feedback using the full previous version history, within the same facts.
 Revision requests must actually change the customer-facing title, bullets or description.

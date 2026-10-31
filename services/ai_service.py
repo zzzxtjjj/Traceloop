@@ -44,7 +44,15 @@ def run_structured_model(
     output_model: type[OutputT],
     provider: StructuredModelProvider,
     session: Session | None = None,
+    record_run: bool = True,
 ) -> OutputT:
+    if not record_run:
+        return _generate_validated(
+            prompt=prompt,
+            output_model=output_model,
+            provider=provider,
+        )
+
     started = time.perf_counter()
     with session_context(session) as db:
         run = AiRun(
@@ -58,51 +66,58 @@ def run_structured_model(
         db.add(run)
         db.flush()
 
-        invalid_payload: str | None = None
-        max_attempts = getattr(provider, "max_attempts", 1)
-        if max_attempts not in {1, 2}:
-            max_attempts = 1
-        for attempt in range(max_attempts):
-            try:
-                raw = provider.generate(
-                    prompt=prompt,
-                    schema=output_model.model_json_schema(),
-                    repair_from=invalid_payload,
-                )
-            except TimeoutError as exc:
-                run.status = "failed"
-                run.error_code = ModelTimeoutError.code
-                run.latency_ms = int((time.perf_counter() - started) * 1000)
-                db.flush()
-                raise ModelTimeoutError("模型调用超时，请稍后重试。") from exc
-            except TradeLoopError as exc:
-                run.status = "failed"
-                run.error_code = exc.code
-                run.latency_ms = int((time.perf_counter() - started) * 1000)
-                db.flush()
-                raise
+        try:
+            parsed = _generate_validated(
+                prompt=prompt,
+                output_model=output_model,
+                provider=provider,
+            )
+        except TradeLoopError as exc:
+            run.status = "failed"
+            run.error_code = exc.code
+            run.latency_ms = int((time.perf_counter() - started) * 1000)
+            db.flush()
+            raise
 
-            try:
-                parsed = (
-                    output_model.model_validate_json(raw)
-                    if isinstance(raw, str)
-                    else output_model.model_validate(raw)
-                )
-                run.status = "success"
-                run.error_code = None
-                run.latency_ms = int((time.perf_counter() - started) * 1000)
-                db.flush()
-                return parsed
-            except (ValidationError, ValueError, json.JSONDecodeError) as exc:
-                invalid_payload = str(raw)
-                if attempt == max_attempts - 1:
-                    run.status = "failed"
-                    run.error_code = "MODEL_BAD_JSON"
-                    run.latency_ms = int((time.perf_counter() - started) * 1000)
-                    db.flush()
-                    raise ModelOutputValidationError(
-                        "模型返回格式不合法，已停止写入关键业务状态。"
-                    ) from exc
+        run.status = "success"
+        run.error_code = None
+        run.latency_ms = int((time.perf_counter() - started) * 1000)
+        db.flush()
+        return parsed
+
+
+def _generate_validated(
+    *,
+    prompt: str,
+    output_model: type[OutputT],
+    provider: StructuredModelProvider,
+) -> OutputT:
+    invalid_payload: str | None = None
+    max_attempts = getattr(provider, "max_attempts", 1)
+    if max_attempts not in {1, 2}:
+        max_attempts = 1
+    for attempt in range(max_attempts):
+        try:
+            raw = provider.generate(
+                prompt=prompt,
+                schema=output_model.model_json_schema(),
+                repair_from=invalid_payload,
+            )
+        except TimeoutError as exc:
+            raise ModelTimeoutError("模型调用超时，请稍后重试。") from exc
+
+        try:
+            return (
+                output_model.model_validate_json(raw)
+                if isinstance(raw, str)
+                else output_model.model_validate(raw)
+            )
+        except (ValidationError, ValueError, json.JSONDecodeError) as exc:
+            invalid_payload = str(raw)
+            if attempt == max_attempts - 1:
+                raise ModelOutputValidationError(
+                    "模型返回格式不合法，已停止写入关键业务状态。"
+                ) from exc
 
     raise ModelOutputValidationError("模型调用未返回有效结果。")
 

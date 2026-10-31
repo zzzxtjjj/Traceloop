@@ -73,7 +73,7 @@ def make_release_tree(root: Path, *, with_database: bool = True) -> str:
     )
     pages = root / "pages"
     pages.mkdir()
-    for number in range(1, 6):
+    for number in range(1, 8):
         (pages / f"0{number}_page.py").write_text("", encoding="utf-8")
 
     database = root / "data" / "tradeloop.db"

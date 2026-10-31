@@ -45,6 +45,7 @@ class Settings:
         "MODEL_MAX_REVIEWS_PER_RUN", 200
     )
     model_max_attempts: int = _positive_int_env("MODEL_MAX_ATTEMPTS", 1)
+    model_json_object: bool = False
 
 
 settings = Settings()

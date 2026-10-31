@@ -38,8 +38,8 @@ st.set_page_config(page_title="项目首页 · TradeLoop", page_icon="🌊", lay
 apply_brand_theme()
 render_page_header(
     "PROJECT JOURNAL · 项目航海志",
-    "从同一份项目事实出发",
-    "选择本地演示用户后，只能查看其已加入的项目；成员岗位由数据库记录决定。",
+    "选择项目，开始处理业务",
+    "选择本地演示用户后，只能查看其已加入的项目；每个人可执行的操作由其项目岗位决定。",
 )
 
 project_id, role = render_sidebar(require_unlock=True)

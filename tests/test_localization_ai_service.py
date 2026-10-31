@@ -32,6 +32,13 @@ class Provider:
             "description": claim,
             "missing_information": [],
             "review_notes": ["请人工核对语言与事实"],
+            "language": (
+                "de-DE"
+                if '"language": "de-DE"' in self.prompts[-1]
+                else "zh-CN"
+                if '"language": "zh-CN"' in self.prompts[-1]
+                else "en-US"
+            ),
         }
 
 

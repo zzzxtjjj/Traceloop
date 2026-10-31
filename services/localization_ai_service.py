@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -33,6 +34,7 @@ class LocalizedCopy(BaseModel):
     description: CopyClaim
     missing_information: list[str]
     review_notes: list[str]
+    language: Literal["zh-CN", "en-US", "de-DE"]
 
 
 def generate_localized_copy(
@@ -40,6 +42,7 @@ def generate_localized_copy(
     project_id: int,
     user_id: int,
     market: str,
+    target_language: str | None = None,
     evidence_ids: list[int],
     facts_confirmed: bool,
     parent_id: int | None = None,
@@ -53,6 +56,9 @@ def generate_localized_copy(
     with session_context(session) as db:
         require_project_role(project_id, user_id, {"owner"}, session=db)
         _require_project_market(db, project_id, market)
+        language = target_language or MARKET_LANGUAGES[market]
+        if language not in {"zh-CN", "en-US", "de-DE"}:
+            raise ValueError("目标语言仅支持简体中文、英语或德语。")
         if not facts_confirmed or not evidence_ids:
             raise ValueError("请由负责人确认商品事实并选择来源依据。")
         sources = []
@@ -99,7 +105,7 @@ def generate_localized_copy(
 
         context = {
             "market": market,
-            "language": MARKET_LANGUAGES[market],
+            "language": language,
             "platform": "google_merchant",
             "confirmed_sources": sources,
             "history": history,
@@ -156,7 +162,11 @@ def generate_localized_copy(
                     and [item.text for item in output.bullets]
                     == [item["text"] for item in previous["bullets"]]
                 )
-            if copy_unchanged:
+            if output.language != language:
+                run.status = "failed"
+                run.error_code = "MODEL_LANGUAGE_MISMATCH"
+                failure = ModelOutputValidationError("模型输出语言与所选目标语言不一致。")
+            elif copy_unchanged:
                 run.status = "failed"
                 run.error_code = "MODEL_REVISION_UNCHANGED"
                 failure = ModelOutputValidationError("正文没有按反馈修改，请明确修改要求后重试。")
@@ -172,7 +182,7 @@ def generate_localized_copy(
                 result = Generation(
                     project_id=project_id,
                     market=market,
-                    language=MARKET_LANGUAGES[market],
+                    language=language,
                     version=parent.version + 1 if parent else 1,
                     parent_id=parent_id,
                     feedback=feedback.strip(),

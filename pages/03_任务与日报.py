@@ -26,6 +26,7 @@ render_page_header(
     "任务、交付与日报复盘",
     "任务必须先发布，交付必须附证据，完成状态必须经过人工验收。",
 )
+st.info("执行人：选择任务并提交交付材料。审核人：检查材料后通过或退回。只有验收通过，任务才算完成。日报用于记录进度。")
 project_id, role = render_sidebar()
 if project_id is None:
     st.warning("请先进入一个项目。")

@@ -73,6 +73,17 @@
 
 甲SHA：______；乙SHA：______；整合SHA：______；实际命令/结果：______。
 
+### A3 甲方实现状态（2026-10-31）
+
+- [x] 新增纯分析 Schema、`analyze_document`、`extract_requirements`、独立 Prompt 与 Mock 测试。
+- [x] Evidence ID 必须属于输入快照；引用必须是对应解析片段中的连续原文；响应保留输入中的 file_id、file_version 和 locator。
+- [x] 输出均为 `needs_review`，且 `publishable=false`；模块不读写数据库、不创建 Finding/Task。
+- [ ] 乙方 B5 将已授权解析结果适配为 `DocumentSnapshot`，并映射响应到 `DocumentAnalysisRequest/Output` 与 `ExtractedRequirement`。
+- [ ] 联合确认业务字段名/枚举、Evidence 外键和 AiRun 单一持久化入口；A3 本身用 `record_run=False`，不写 AiRun。
+- [ ] 使用乙方真实 B5 实现验证未授权项目、重复请求、失败记录、人工审核和 Task 创建边界。
+
+接口细节：[A3 Document Understanding](AI_DOCUMENT_UNDERSTANDING_A3.md)。
+
 ## 5. M2：评价与Finding
 
 - [ ] 乙完成/复用导入、去重、批次、原文Evidence、统计与Finding审核。

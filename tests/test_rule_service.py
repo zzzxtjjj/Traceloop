@@ -1,11 +1,20 @@
 import json
+from datetime import date, timedelta
 
 import pytest
 from sqlalchemy import func, select
 
 from core.errors import RuleSourceError
 from core.models import Project, RuleCheckRecord
-from services.rule_service import run_rule_checks
+from services.rule_service import _source_is_usable, load_rules, run_rule_checks
+
+
+def test_stale_and_future_rule_dates_require_manual_recheck():
+    rule = load_rules()[0]
+    stale = rule.model_copy(update={"source_checked_at": date.today() - timedelta(days=181)})
+    future = rule.model_copy(update={"source_checked_at": date.today() + timedelta(days=1)})
+    assert not _source_is_usable(stale)[0]
+    assert not _source_is_usable(future)[0]
 
 
 def make_project(session) -> Project:

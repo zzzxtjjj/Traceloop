@@ -84,6 +84,28 @@ def test_provider_uses_values_from_settings() -> None:
     assert provider.max_attempts == 2
 
 
+def test_deepseek_uses_json_object_with_schema_in_prompt() -> None:
+    transport = RecordingTransport(response_with_content('{"ok":true}'))
+    provider = make_provider(
+        transport, base_url="https://api.deepseek.com", model_name="deepseek-flash"
+    )
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+    provider.generate(prompt="Return JSON.", schema=schema)
+    payload = transport.calls[0]["payload"]
+    assert payload["response_format"] == {"type": "json_object"}
+    assert payload["thinking"] == {"type": "disabled"}
+    assert json.dumps(schema) in payload["messages"][0]["content"]
+    assert "简体中文" in payload["messages"][0]["content"]
+    assert len(transport.calls) == 1
+
+
+def test_deepseek_lookalike_host_keeps_default_protocol() -> None:
+    transport = RecordingTransport(response_with_content('{"ok":true}'))
+    provider = make_provider(transport, base_url="https://api.deepseek.com.example.test")
+    provider.generate(prompt="Return JSON.", schema={"type": "object"})
+    assert transport.calls[0]["payload"]["response_format"]["type"] == "json_schema"
+
+
 def test_provider_requires_configuration_without_making_request() -> None:
     transport = RecordingTransport(response_with_content({"result_type": "ok"}))
     provider = make_provider(transport, api_key="")

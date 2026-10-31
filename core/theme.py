@@ -209,6 +209,9 @@ button[kind="primary"] { background: var(--tl-vermilion) !important; color: whit
 
 
 def apply_brand_theme() -> None:
+    from core.display_language import enable_display_language
+
+    enable_display_language()
     st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
 
@@ -227,16 +230,20 @@ def render_sidebar_brand() -> None:
 def render_sidebar_navigation() -> None:
     render_sidebar_brand()
     links = [
-        ("app.py", "总览"),
+        ("app.py", "使用教学"),
         ("pages/01_项目首页.py", "项目首页"),
         ("pages/02_报价决策.py", "报价决策"),
         ("pages/03_任务与日报.py", "任务与日报"),
         ("pages/04_差评改进.py", "差评改进"),
         ("pages/05_本地化与校验.py", "本地化与校验"),
+        ("pages/06_设置.py", "设置"),
+        ("pages/07_AI文档理解.py", "AI 文档理解"),
     ]
     try:
         for path, label in links:
-            st.sidebar.page_link(path, label=label)
+            from core.display_language import translate
+
+            st.sidebar.page_link(path, label=translate(label))
     except StreamlitPageNotFoundError:
         # AppTest can execute a page outside its normal multipage entrypoint.
         # The production app always resolves these links through app.py.

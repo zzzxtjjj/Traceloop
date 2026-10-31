@@ -26,7 +26,7 @@ REQUIRED_FILES = (
     "scripts/migrate_db.py",
     "scripts/seed_demo.py",
 )
-REQUIRED_PAGES = tuple(f"0{number}_" for number in range(1, 6))
+REQUIRED_PAGES = tuple(f"0{number}_" for number in range(1, 8))
 EXPECTED_REVISION = "0002_project_membership"
 EXPECTED_DEMO_PROJECT = "保温杯新品出海"
 EXPECTED_DEMO_EMAILS = (
@@ -83,8 +83,8 @@ def _check_pages(root: Path) -> ReleaseCheck:
         if not any(name.startswith(prefix) for name in existing)
     ]
     if missing:
-        return ReleaseCheck("pages", "fail", f"5 个页面中缺少 {len(missing)} 个。")
-    return ReleaseCheck("pages", "pass", "5 个业务页面均存在。")
+        return ReleaseCheck("pages", "fail", f"7 个业务页面中缺少 {len(missing)} 个。")
+    return ReleaseCheck("pages", "pass", "7 个业务页面均存在。")
 
 
 def _check_alembic_revision(root: Path) -> ReleaseCheck:

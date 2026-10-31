@@ -1,4 +1,7 @@
 .venv/
+.venv-tradeloop/
+data/local_acceptance/
+data/evaluation/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -10,4 +13,6 @@ data/uploads/
 .streamlit/secrets.toml
 .idea/
 .vscode/
-
+.env
+.env.*
+!.env.example

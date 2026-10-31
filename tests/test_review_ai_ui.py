@@ -55,6 +55,7 @@ def _prepare_page(monkeypatch, *, configured: bool) -> AppTest:
         Settings(
             model_api_key="configured-key" if configured else "",
             model_name="configured-model" if configured else "",
+            model_base_url="https://api.openai.com/v1",
         ),
     )
     app = AppTest.from_file(str(PAGE))
@@ -64,22 +65,29 @@ def _prepare_page(monkeypatch, *, configured: bool) -> AppTest:
     return app
 
 
-def test_unconfigured_model_downgrades_to_rules_without_page_error(monkeypatch) -> None:
+def test_unconfigured_model_does_not_fall_back_when_ai_selected(monkeypatch) -> None:
     app = _prepare_page(monkeypatch, configured=False).run(timeout=10)
+    rule_calls = []
+    monkeypatch.setattr(
+        services.review_service,
+        "analyze_review_batch",
+        lambda **kwargs: rule_calls.append(kwargs) or [],
+    )
 
     assert not app.exception
     assert app.radio[0].options == ["规则分类", "真实 AI 分类"]
     assert any("模型配置不完整或无效" in item.value for item in app.warning)
     metric_values = {item.label: item.value for item in app.metric}
-    assert metric_values["API Key"] == "未配置"
-    assert "尚未真实联网验证" in metric_values["联网状态"]
+    assert "API Key" not in metric_values
 
     app.radio[0].set_value("真实 AI 分类")
     next(button for button in app.button if button.label == "运行所选分类").click()
     app.run(timeout=10)
 
     assert not app.exception
-    assert any("已降级为可复现规则分类" in item.value for item in app.warning)
+    assert app.error
+    assert not rule_calls
+    assert not any("已降级" in item.value for item in app.warning)
 
 
 def test_configured_model_displays_run_metadata(monkeypatch) -> None:
@@ -98,12 +106,8 @@ def test_configured_model_displays_run_metadata(monkeypatch) -> None:
 
     app = _prepare_page(monkeypatch, configured=True).run(timeout=10)
     initial_metrics = {item.label: item.value for item in app.metric}
-    assert initial_metrics["API Key"] == "已配置"
-    assert initial_metrics["模型名"] == "configured-model"
-    assert initial_metrics["服务地址主机"] == "api.openai.com"
-    assert initial_metrics["联网状态"] == "尚未真实联网验证"
-    assert "最多 1 次请求" in initial_metrics["单次输入上限"]
-    assert any("默认 1" in item.value for item in app.caption)
+    assert "API Key" not in initial_metrics
+    assert any("AI 已配置" in item.value for item in app.caption)
     app.radio[0].set_value("真实 AI 分类")
     next(button for button in app.button if button.label == "运行所选分类").click()
     app.run(timeout=10)
@@ -111,10 +115,8 @@ def test_configured_model_displays_run_metadata(monkeypatch) -> None:
     assert not app.exception
     assert any("真实 AI 分类完成" in item.value for item in app.success)
     metric_values = {item.label: item.value for item in app.metric}
-    assert metric_values["AiRun ID"] == "27"
-    assert metric_values["模型"] == "configured-model"
-    assert metric_values["Prompt 版本"] == "review_classify_v1"
-    assert metric_values["运行状态"] == "success"
+    assert "AiRun ID" not in metric_values
+    assert any("分析记录" in item.label for item in app.expander)
 
 
 @pytest.mark.parametrize(
@@ -129,7 +131,7 @@ def test_configured_model_displays_run_metadata(monkeypatch) -> None:
         (ModelInputLimitError, "输入超过本次模型分析上限"),
     ],
 )
-def test_model_failures_are_clear_and_fall_back_without_crashing(
+def test_model_failures_are_clear_and_do_not_fall_back(
     monkeypatch, error_type, expected_message
 ) -> None:
     fake_service = ModuleType("services.review_ai_service")
@@ -154,7 +156,8 @@ def test_model_failures_are_clear_and_fall_back_without_crashing(
 
     assert not app.exception
     assert any(expected_message in item.value for item in app.error)
-    assert any("已降级为规则分类" in item.value for item in app.warning)
+    assert any("没有生成规则替代结果" in item.value for item in app.info)
+    assert not any("已降级" in item.value for item in app.warning)
 
 
 def test_page_never_displays_api_key_or_offers_live_test_button(monkeypatch) -> None:
@@ -195,4 +198,4 @@ def test_page_never_displays_api_key_or_offers_live_test_button(monkeypatch) -> 
     assert not app.exception
     assert secret not in str(app)
     assert all("在线测试" not in button.label for button in app.button)
-    assert any("页面不提供在线测试按钮" in item.value for item in app.caption)
+    assert all(item.label != "API Key" for item in app.metric)

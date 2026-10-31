@@ -1,17 +1,27 @@
 import difflib
+import hashlib
+import json
 
 import streamlit as st
+from sqlalchemy import select
 
 from core.access_ui import render_role_boundary_notice, render_user_error
-from core.db import init_db
-from core.errors import RuleSourceError, TradeLoopError
+from core.config import settings
+from core.db import init_db, session_context
+from core.errors import ProjectAccessDeniedError, RuleSourceError, TradeLoopError
+from core.models import Evidence
 from core.theme import apply_brand_theme, render_footer, render_page_header
 from core.ui import render_sidebar
+from services.app_preferences import runtime_config
+from services.localization_ai_service import generate_localized_copy
 from services.localization_service import (
     create_v1_generation,
     create_v2_generation,
     list_generations,
 )
+from services.localization_workflow import get_generation_chain
+from services.membership_service import require_project_role
+from services.model_readiness import check_model_readiness
 from services.rule_service import run_rule_checks
 
 init_db()
@@ -22,13 +32,146 @@ render_page_header(
     "内容版本与跨市场规则校验",
     "保留人工内容的 V1、反馈和 V2 版本链，并让规则检查独立、可追溯地运行。",
 )
+st.info(
+    "先选择目标市场并保存第一版文案，再填写修改意见和第二版；可查看修改差异。“独立规则校验”用于检查标题或条款。当前文案由人工填写。"
+)
 project_id, role = render_sidebar()
 if project_id is None:
     st.warning("请先进入一个项目。")
     st.stop()
 render_role_boundary_notice(role)
 
-version_tab, rule_tab = st.tabs(["内容版本闭环", "独立规则校验"])
+version_tab, rule_tab, ai_tab = st.tabs(["文案与修改记录", "独立规则校验", "AI 商品文案"])
+
+with ai_tab:
+    st.markdown("### 基于项目原始依据生成文案")
+    st.caption("真实模型调用只会在点击生成后发生。输出会保留依据编号并待人工审核，不会自动发布。")
+    user_id = st.session_state.get("current_user_id")
+    selected_market = st.selectbox(
+        "商品市场",
+        options=["US", "DE"],
+        format_func=lambda item: "美国" if item == "US" else "德国",
+        key="ai_copy_market",
+    )
+    target_language = st.selectbox(
+        "生成语言",
+        options=["zh-CN", "en-US", "de-DE"],
+        format_func={"zh-CN": "简体中文", "en-US": "英语", "de-DE": "德语"}.get,
+        key="ai_copy_language",
+    )
+    readiness = check_model_readiness(runtime_config(settings))
+    if not readiness.configured:
+        st.error("模型未配置，商品文案生成不可用；不会显示模拟结果。请先检查“设置”。")
+    if not user_id:
+        st.error("当前用户身份不可用。")
+        sources = []
+    else:
+        try:
+            require_project_role(project_id, user_id, {"owner"})
+            with session_context() as db:
+                sources = list(
+                    db.scalars(
+                        select(Evidence)
+                        .where(Evidence.project_id == project_id)
+                        .order_by(Evidence.id.desc())
+                    )
+                )
+        except ProjectAccessDeniedError as exc:
+            render_user_error(exc, fallback="只有项目负责人可以生成商品内容。")
+            sources = []
+    source_labels = {
+        item.id: f"依据 #{item.id} · {item.source_entity_type} · {item.excerpt[:100]}"
+        for item in sources
+    }
+    if source_labels:
+        chosen_evidence = st.multiselect(
+            "选择已确认的商品事实来源",
+            options=list(source_labels),
+            format_func=lambda item: source_labels[item],
+            key="ai_copy_evidence_ids",
+        )
+    else:
+        chosen_evidence = []
+        st.info("当前项目还没有可用的来源依据。请先导入并审核商品事实资料。")
+    facts_confirmed = st.checkbox(
+        "我已人工核对所选依据，并确认它们可以用于商品文案。",
+        key="ai_copy_facts_confirmed",
+    )
+    generate_key = hashlib.sha256(
+        json.dumps(
+            [project_id, selected_market, target_language, sorted(chosen_evidence)],
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    if st.button(
+        "调用真实 AI 生成文案",
+        type="primary",
+        disabled=not (readiness.configured and facts_confirmed and chosen_evidence and user_id),
+    ):
+        if st.session_state.get("ai_copy_request") == generate_key:
+            st.info("相同依据已有生成结果；为避免重复计费，本次没有重新请求。")
+        else:
+            st.caption("每次请求都可能产生费用。超时不能证明服务端未收到请求，请勿自动或盲目重试。")
+            try:
+                with st.spinner("正在调用模型并校验结构、语言和来源编号…"):
+                    generation = generate_localized_copy(
+                        project_id=project_id,
+                        user_id=user_id,
+                        market=selected_market,
+                        target_language=target_language,
+                        evidence_ids=chosen_evidence,
+                        facts_confirmed=facts_confirmed,
+                    )
+            except (TradeLoopError, ValueError) as exc:
+                render_user_error(exc, fallback="商品文案生成失败；没有保存未验证结果。")
+            else:
+                st.session_state["ai_copy_request"] = generate_key
+                st.session_state["ai_copy_generation_id"] = generation.id
+                st.rerun()
+
+    generation_id = st.session_state.get("ai_copy_generation_id")
+    if generation_id:
+        try:
+            chain = get_generation_chain(
+                project_id=project_id, user_id=user_id, generation_id=generation_id
+            )
+        except (TradeLoopError, ValueError) as exc:
+            render_user_error(exc, fallback="读取生成结果失败。")
+        else:
+            selected = chain[-1]
+            output = selected["content"]["output"]
+            st.success("真实模型生成完成 · 来源编号已校验 · 待人工审核 · 未发布")
+            st.caption(
+                f"版本 #{selected['id']} · {selected['market']} · "
+                f"{selected['content'].get('platform', 'Google Merchant')} · "
+                f"语言：{selected['content'].get('language', selected['market'])}"
+            )
+            for section in ("title", "bullets", "description"):
+                value = output.get(section)
+                st.markdown(f"**{section}**")
+                for claim in value if isinstance(value, list) else [value]:
+                    if not claim:
+                        continue
+                    st.write(claim["text"])
+                    st.caption(
+                        "来源依据：" + ", ".join(f"#{item}" for item in claim["evidence_ids"])
+                    )
+            if output.get("missing_information"):
+                st.warning("待补充信息：" + "；".join(output["missing_information"]))
+            if output.get("review_notes"):
+                st.info("模型审核提示：" + "；".join(output["review_notes"]))
+            with st.expander("查看来源原文"):
+                for source in selected["content"].get("sources", []):
+                    st.caption(f"依据 #{source['evidence_id']}")
+                    st.code(source["text"], language=None)
+            with st.expander("查看独立规则检查状态"):
+                if selected["checks"]:
+                    st.json(selected["checks"][-1], expanded=False)
+                else:
+                    st.info("当前版本尚无规则检查记录。")
+            st.warning(
+                "该生成服务尚未完成规格表自动拼接及完整事实语义核验；请逐条对照原文并运行独立规则检查。"
+            )
 
 with version_tab:
     st.info(
@@ -103,9 +246,7 @@ with version_tab:
                 except (TradeLoopError, ValueError) as exc:
                     render_user_error(exc, fallback="V2 保存失败，请检查反馈和内容。")
                 else:
-                    st.success(
-                        f"V2 #{generation.id} 已保存，parent_id 指向 V1 #{selected_v1.id}。"
-                    )
+                    st.success(f"V2 #{generation.id} 已保存，parent_id 指向 V1 #{selected_v1.id}。")
                     st.rerun()
 
         st.markdown("### 3 · 查询版本链")

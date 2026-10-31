@@ -118,11 +118,11 @@ for path in files:
 
         if path.name == "04_差评改进.py":
             metrics = {item.label: item.value for item in app.metric}
-            if metrics.get("API Key") != "未配置":
+            if "API Key" in metrics:
                 failures.append(
-                    "04_差评改进.py: expected API Key status to be 未配置"
+                    "04_差评改进.py: technical credentials should not appear as metrics"
                 )
-            if "尚未真实联网验证" not in metrics.get("联网状态", ""):
+            if not any("模型配置不完整或无效" in item.value for item in app.warning):
                 failures.append(
                     "04_差评改进.py: expected not-live-verified model status"
                 )
@@ -153,4 +153,4 @@ raise SystemExit(1 if failures else 0)
     assert summary_line is not None, f"child process returned no page summary:\n{result.stdout}"
     summary = json.loads(summary_line)
     assert not summary["failures"]
-    assert len(summary["results"]) == 6
+    assert len(summary["results"]) == 8

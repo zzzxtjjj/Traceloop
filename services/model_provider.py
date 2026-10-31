@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from core.config import Settings, settings
@@ -71,6 +72,7 @@ class OpenAICompatibleProvider:
         max_input_chars: int = 50_000,
         max_reviews_per_run: int = 200,
         max_attempts: int = 1,
+        json_object: bool = False,
         transport: HttpTransport | None = None,
     ) -> None:
         self.api_key = api_key.strip()
@@ -80,6 +82,7 @@ class OpenAICompatibleProvider:
         self.max_input_chars = max_input_chars
         self.max_reviews_per_run = max_reviews_per_run
         self.max_attempts = max_attempts
+        self.json_object = json_object
         self.transport = transport or UrllibHttpTransport()
 
     @classmethod
@@ -89,6 +92,9 @@ class OpenAICompatibleProvider:
         *,
         transport: HttpTransport | None = None,
     ) -> "OpenAICompatibleProvider":
+        from services.app_preferences import runtime_config
+
+        config = runtime_config(config)
         return cls(
             api_key=config.model_api_key,
             model_name=config.model_name,
@@ -97,6 +103,7 @@ class OpenAICompatibleProvider:
             max_input_chars=config.model_max_input_chars,
             max_reviews_per_run=config.model_max_reviews_per_run,
             max_attempts=config.model_max_attempts,
+            json_object=config.model_json_object,
             transport=transport,
         )
 
@@ -153,6 +160,18 @@ class OpenAICompatibleProvider:
                 },
             },
         }
+        # DeepSeek Chat Completions supports JSON Object, not JSON Schema.
+        # Business schemas and evidence references remain validated locally.
+        if self.json_object or urlsplit(self.base_url).hostname == "api.deepseek.com":
+            payload["response_format"] = {"type": "json_object"}
+            payload["max_tokens"] = 8192
+            messages[0]["content"] += (
+                " 用简体中文填写说明性文字，保留 JSON 字段名、枚举值及原文引用。"
+                " Return a JSON object conforming to this JSON Schema: "
+                + json.dumps(schema, ensure_ascii=False)
+            )
+        if urlsplit(self.base_url).hostname == "api.deepseek.com":
+            payload["thinking"] = {"type": "disabled"}
         try:
             response = self.transport.post(
                 url=self.endpoint,
