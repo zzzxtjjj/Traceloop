@@ -6,10 +6,12 @@ import streamlit as st
 from sqlalchemy import select
 
 from core.access_ui import render_role_boundary_notice, render_user_error
+from core.auth_ui import get_authenticated_user
 from core.config import settings
 from core.db import init_db, session_context
 from core.errors import ProjectAccessDeniedError, RuleSourceError, TradeLoopError
-from core.models import Evidence
+from core.models import Evidence, Generation, ProductEntityLink
+from core.product_ui import select_product
 from core.theme import apply_brand_theme, render_footer, render_page_header
 from core.ui import render_sidebar
 from services.app_preferences import runtime_config
@@ -19,14 +21,15 @@ from services.localization_service import (
     create_v2_generation,
     list_generations,
 )
-from services.localization_workflow import get_generation_chain
+from services.localization_workflow import get_generation_chain, review_generation
 from services.membership_service import require_project_role
 from services.model_readiness import check_model_readiness
+from services.product_revision_service import fact_screen, revise_copy
 from services.rule_service import run_rule_checks
 
 init_db()
-st.set_page_config(page_title="本地化与校验 · TradeLoop", page_icon="✉️", layout="wide")
-apply_brand_theme()
+st.set_page_config(page_title="商品资料与多语言 · TradeLoop", page_icon="✉️", layout="wide")
+apply_brand_theme(require_auth=True)
 render_page_header(
     "GLOBAL MARKET LETTERS · 全球市场信笺",
     "内容版本与跨市场规则校验",
@@ -40,13 +43,31 @@ if project_id is None:
     st.warning("请先进入一个项目。")
     st.stop()
 render_role_boundary_notice(role)
+token = st.session_state.get("auth_token", "")
+product_id = select_product(project_id, token, owner=role == "项目负责人")
 
 version_tab, rule_tab, ai_tab = st.tabs(["文案与修改记录", "独立规则校验", "AI 商品文案"])
 
 with ai_tab:
     st.markdown("### 基于项目原始依据生成文案")
+    st.caption(
+        "商品资料入口：上传产品规格、包装要求、认证资料或说明书。"
+        "AI 只从原文提取客观事实，供你核对，不会自动发布。"
+    )
+    product_upload = st.file_uploader(
+        "上传商品资料文件",
+        type=["pdf", "docx", "xlsx", "csv", "txt", "png", "jpg", "jpeg"],
+        help="请选择与当前产品有关的规格、包装、认证或说明书文件。",
+        key="product_facts_upload",
+    )
+    if product_upload is not None:
+        st.info(
+            f"已选择：{product_upload.name}。请在“文档与 AI 助手”中完成解析和事实核对，"
+            "再用于生成文案。"
+        )
     st.caption("真实模型调用只会在点击生成后发生。输出会保留依据编号并待人工审核，不会自动发布。")
-    user_id = st.session_state.get("current_user_id")
+    authenticated_user = get_authenticated_user()
+    user_id = authenticated_user.id if authenticated_user else None
     selected_market = st.selectbox(
         "商品市场",
         options=["US", "DE"],
@@ -62,7 +83,7 @@ with ai_tab:
     readiness = check_model_readiness(runtime_config(settings))
     if not readiness.configured:
         st.error("模型未配置，商品文案生成不可用；不会显示模拟结果。请先检查“设置”。")
-    if not user_id:
+    if not user_id or product_id is None:
         st.error("当前用户身份不可用。")
         sources = []
     else:
@@ -72,7 +93,11 @@ with ai_tab:
                 sources = list(
                     db.scalars(
                         select(Evidence)
-                        .where(Evidence.project_id == project_id)
+                        .where(
+                            Evidence.project_id == project_id,
+                            Evidence.business_object_id == product_id,
+                            Evidence.evidence_type == "product_fact",
+                        )
                         .order_by(Evidence.id.desc())
                     )
                 )
@@ -121,6 +146,8 @@ with ai_tab:
                         target_language=target_language,
                         evidence_ids=chosen_evidence,
                         facts_confirmed=facts_confirmed,
+                        product_id=product_id,
+                        session_token=token,
                     )
             except (TradeLoopError, ValueError) as exc:
                 render_user_error(exc, fallback="商品文案生成失败；没有保存未验证结果。")
@@ -129,7 +156,29 @@ with ai_tab:
                 st.session_state["ai_copy_generation_id"] = generation.id
                 st.rerun()
 
-    generation_id = st.session_state.get("ai_copy_generation_id")
+    with session_context() as db:
+        saved_versions = list(
+            db.scalars(
+                select(Generation)
+                .join(ProductEntityLink, ProductEntityLink.generation_id == Generation.id)
+                .where(
+                    Generation.project_id == project_id, ProductEntityLink.product_id == product_id
+                )
+                .order_by(Generation.id.desc())
+            )
+        )
+    generation_id = None
+    if saved_versions:
+        version_labels = {
+            item.id: f"版本 {item.version} · {item.language} · #{item.id}"
+            for item in saved_versions
+        }
+        generation_id = st.selectbox(
+            "已保存商品内容",
+            list(version_labels),
+            format_func=version_labels.get,
+            key=f"copy_version_{project_id}_{product_id}",
+        )
     if generation_id:
         try:
             chain = get_generation_chain(
@@ -172,6 +221,75 @@ with ai_tab:
             st.warning(
                 "该生成服务尚未完成规格表自动拼接及完整事实语义核验；请逐条对照原文并运行独立规则检查。"
             )
+            st.json(fact_screen(output, selected["content"].get("sources", [])), expanded=False)
+            st.caption(f"人工审核状态：{selected['review_status']}；内容不会自动发布。")
+            if role == "项目负责人":
+                note = st.text_input("人工审核意见", key=f"copy_review_note_{generation_id}")
+                decision = st.radio(
+                    "审核决定",
+                    ["rejected", "accepted"],
+                    format_func={"rejected": "驳回", "accepted": "人工确认"}.get,
+                    key=f"copy_decision_{generation_id}",
+                )
+                if st.button("保存人工审核", key=f"review_copy_{generation_id}"):
+                    try:
+                        review_generation(
+                            project_id=project_id,
+                            user_id=user_id,
+                            generation_id=generation_id,
+                            decision=decision,
+                            note=note,
+                        )
+                        st.rerun()
+                    except (TradeLoopError, ValueError) as exc:
+                        render_user_error(exc)
+                with st.expander("根据反馈人工修订（不调用 AI）"):
+                    title = st.text_input(
+                        "商品标题", output["title"]["text"], key=f"edit_title_{generation_id}"
+                    )
+                    bullet_texts = [
+                        st.text_input(
+                            f"卖点 {i + 1}", claim["text"], key=f"edit_bullet_{generation_id}_{i}"
+                        )
+                        for i, claim in enumerate(output["bullets"])
+                    ]
+                    description = st.text_area(
+                        "详情描述",
+                        output["description"]["text"],
+                        key=f"edit_description_{generation_id}",
+                    )
+                    feedback = st.text_area(
+                        "反馈依据与修改说明", key=f"edit_reason_{generation_id}"
+                    )
+                    improvement_id = st.number_input(
+                        "关联改进记录编号（0 表示暂不关联）",
+                        min_value=0,
+                        step=1,
+                        key=f"edit_improvement_{generation_id}",
+                    )
+                    if st.button("保存新版本并重新核验", key=f"save_revision_{generation_id}"):
+                        revised_output = json.loads(json.dumps(output))
+                        revised_output["title"]["text"] = title
+                        revised_output["description"]["text"] = description
+                        for claim, text in zip(
+                            revised_output["bullets"], bullet_texts, strict=True
+                        ):
+                            claim["text"] = text
+                        try:
+                            revise_copy(
+                                project_id=project_id,
+                                session_token=token,
+                                product_id=product_id,
+                                parent_id=generation_id,
+                                output=revised_output,
+                                feedback=feedback,
+                                improvement_id=int(improvement_id) or None,
+                            )
+                            st.rerun()
+                        except (TradeLoopError, ValueError) as exc:
+                            render_user_error(exc)
+                if selected.get("diff"):
+                    st.code(selected["diff"], language="diff")
 
 with version_tab:
     st.info(

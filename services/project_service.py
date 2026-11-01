@@ -37,6 +37,7 @@ def create_project(
     payload: ProjectCreate,
     owner_user_id: int | None = None,
     session: Session | None = None,
+    require_existing_owner: bool = False,
 ) -> Project:
     with session_context(session) as db:
         if db.scalar(select(Project.id).where(Project.name == payload.name)) is not None:
@@ -45,6 +46,16 @@ def create_project(
             owner = db.get(User, owner_user_id)
             if not owner or not owner.active:
                 raise ProjectAccessDeniedError("当前用户无权执行该项目操作。")
+            if require_existing_owner:
+                has_owner_membership = db.scalar(
+                    select(ProjectMember.id).where(
+                        ProjectMember.user_id == owner_user_id,
+                        ProjectMember.role == "owner",
+                        ProjectMember.status == "active",
+                    )
+                )
+                if has_owner_membership is None:
+                    raise ProjectAccessDeniedError("只有项目负责人可以新建项目。")
         project = Project(
             name=payload.name,
             product_name=payload.product_name,
@@ -81,7 +92,24 @@ def create_project(
 
 def list_projects() -> list[Project]:
     with session_scope() as session:
-        return list(session.scalars(select(Project).order_by(Project.created_at.desc())))
+        return list(
+            session.scalars(
+                select(Project)
+                .where(Project.archived.is_(False))
+                .order_by(Project.created_at.desc())
+            )
+        )
+
+
+def archive_project(project_id: int, *, session: Session | None = None) -> Project:
+    """Hide a project from normal lists without deleting its history."""
+    with session_context(session) as db:
+        project = db.get(Project, project_id)
+        if not project:
+            raise ValueError("项目不存在。")
+        project.archived = True
+        db.flush()
+        return project
 
 
 def get_project(project_id: int) -> Project | None:

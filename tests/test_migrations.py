@@ -18,9 +18,17 @@ def test_empty_database_upgrades_to_current_schema(tmp_path) -> None:
     table_names = set(inspect(engine).get_table_names())
     assert set(Base.metadata.tables).issubset(table_names)
     assert "alembic_version" in table_names
+    task_indexes = {item["name"] for item in inspect(engine).get_indexes("tasks")}
+    assert "ix_tasks_assignee_user_id" in task_indexes
+    with engine.connect() as connection:
+        task_foreign_keys = connection.execute(text("PRAGMA foreign_key_list(tasks)")).all()
+    assert any(
+        item[2] == "users" and item[3] == "assignee_user_id" and item[4] == "id"
+        for item in task_foreign_keys
+    )
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0005_daily_report_identity"
+            "0011_task_assignee_integrity"
         )
 
 
@@ -72,9 +80,7 @@ def test_first_stage_database_upgrade_preserves_projects_artifacts_and_quotes(
         assert connection.scalar(select(Project.name)) == "Legacy project"
         assert connection.scalar(select(Artifact.original_filename)) == "legacy.csv"
         assert connection.scalar(select(SupplierQuote.supplier)) == "Legacy supplier"
-        assert connection.scalar(select(SupplierQuote.quality_note)) == (
-            "Legacy row must remain"
-        )
+        assert connection.scalar(select(SupplierQuote.quality_note)) == ("Legacy row must remain")
     assert set(Base.metadata.tables).issubset(set(inspect(engine).get_table_names()))
 
 
@@ -88,7 +94,7 @@ def test_repeated_upgrade_is_idempotent(tmp_path) -> None:
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT COUNT(*) FROM alembic_version")) == 1
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0005_daily_report_identity"
+            "0011_task_assignee_integrity"
         )
 
 

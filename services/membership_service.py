@@ -38,6 +38,8 @@ def create_user(
     email: str,
     *,
     active: bool = True,
+    email_verified: bool = True,
+    force_password_change: bool = False,
     session: Session | None = None,
 ) -> User:
     name = display_name.strip()
@@ -47,7 +49,13 @@ def create_user(
     with session_context(session) as db:
         if db.scalar(select(User.id).where(User.email == normalized_email)) is not None:
             raise UserEmailExistsError("用户邮箱已存在。")
-        user = User(display_name=name, email=normalized_email, active=active)
+        user = User(
+            display_name=name,
+            email=normalized_email,
+            active=active,
+            email_verified=email_verified,
+            force_password_change=force_password_change,
+        )
         try:
             with db.begin_nested():
                 db.add(user)
@@ -85,6 +93,7 @@ def list_user_projects(user_id: int, session: Session | None = None) -> list[Pro
                 .where(
                     ProjectMember.user_id == user_id,
                     ProjectMember.status == ACTIVE_MEMBERSHIP,
+                    Project.archived.is_(False),
                 )
                 .order_by(Project.created_at.desc())
             )
@@ -121,6 +130,26 @@ def require_project_role(
     if membership.role not in allowed:
         raise ProjectAccessDeniedError(DENIED_MESSAGE)
     return membership
+
+
+def can_create_projects(user_id: int, session: Session | None = None) -> bool:
+    """Return whether a user has an active project-owner membership.
+
+    Project creation is a workspace administration action.  Keeping this check
+    server-side lets the UI hide the entry point without making the decision
+    depend on a client-controlled role label.
+    """
+    with session_context(session) as db:
+        return db.scalar(
+            select(ProjectMember.id)
+            .join(User, User.id == ProjectMember.user_id)
+            .where(
+                ProjectMember.user_id == user_id,
+                ProjectMember.role == "owner",
+                ProjectMember.status == ACTIVE_MEMBERSHIP,
+                User.active.is_(True),
+            )
+        ) is not None
 
 
 def list_project_members(

@@ -72,12 +72,10 @@ Link daily reports to tasks and record completed work, references, blockers and 
 
 ## 6 · Settings
 
+Supported business uploads: PDF, DOCX, XLSX, CSV, TXT, PNG and JPG/JPEG. HTML web snapshots are retained only as historical source material and are not accepted as business uploads.
+
 Choose simplified Chinese, English or German. Untranslated hints fall back to Chinese; original evidence and saved records stay unchanged.
 
 Keep local configuration if DeepSeek already works. To switch, select a provider, copy the account's API URL and model name, enter its own key and apply. Saving makes no request; the next analysis uses the settings. Test with a small non-sensitive batch. Only DeepSeek has been live-tested; other entries require verification.
 
 Use the restore button to return to local `.env` configuration. Preferences are browser-session only and may disappear after the session ends. Do not share keys in chats or screenshots. On failure, check access, model, URL, balance and network.
-
-## 7 · Terms and collaboration
-
-Evidence means original records. An issue needs human review. A draft task is not published. Follow-up comparison does not establish causation. Partner A handles services, data, AI and permissions; Partner B handles pages, guides and demos. Share code, not databases, keys or virtual environments.

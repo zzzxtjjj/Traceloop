@@ -10,6 +10,7 @@ __pycache__/
 data/*.db
 data/*.db-*
 data/uploads/
+data/backups/
 .streamlit/secrets.toml
 .idea/
 .vscode/

@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO, Protocol
 
@@ -36,6 +37,7 @@ from core.schemas import (
     ReviewThemeSummary,
     RowError,
 )
+from services.data_intelligence import assess_readiness, suggest_column_mapping
 from services.evidence_service import (
     create_evidence,
     create_finding,
@@ -53,7 +55,23 @@ REVIEW_REQUIRED_COLUMNS = [
     "review_text",
 ]
 REVIEW_OPTIONAL_COLUMNS = ["order_id", "production_batch", "supplier"]
+REVIEW_ALIASES = {
+    "date": ["review_date", "date", "published_at", "created_at"],
+    "sku": ["sku", "product_sku", "product_model", "product_id"],
+    "market": ["market", "country", "marketplace", "region"],
+    "batch": ["batch", "batch_id", "import_batch"],
+    "review_id": ["review_id", "reviewid", "id", "review_number"],
+    "review_text": ["review_text", "review", "comment", "content", "feedback", "text"],
+    "rating": ["rating", "score", "stars", "star_rating"],
+}
 TAXONOMY_VERSION = "review_themes_v1"
+NON_REVIEW_PLACEHOLDER_MARKERS = (
+    "individual review text was not reliably extracted",
+    "review text was not reliably extracted",
+    "no individual reviews were extracted",
+    "未能可靠提取逐条评价",
+    "未能提取单条评价",
+)
 
 THEME_LABELS = {
     "packaging_damage": "包装破损",
@@ -173,24 +191,59 @@ def preview_review_csv(source: str | Path | bytes | BinaryIO) -> ReviewImportPre
             sha256=digest,
         )
 
-    missing = [column for column in REVIEW_REQUIRED_COLUMNS if column not in frame.columns]
-    if missing:
+    normalized = {
+        re.sub(r"[\s\-_]+", "", str(column).strip().casefold()): column for column in frame.columns
+    }
+    mapping: dict[str, str] = {}
+    for target, aliases in REVIEW_ALIASES.items():
+        for alias in aliases:
+            original = normalized.get(re.sub(r"[\s\-_]+", "", alias.casefold()))
+            if original is not None:
+                mapping[target] = str(original)
+                frame[target] = frame[original]
+                break
+    generated_batch = f"import-{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{digest[:8]}"
+    if "batch" not in frame.columns:
+        frame["batch"] = generated_batch
+        mapping["batch"] = "(自动生成)"
+    if "review_id" not in frame.columns:
+        frame["review_id"] = [f"row-{index + 2}-{digest[:8]}" for index in range(len(frame))]
+        mapping["review_id"] = "(自动生成行标识)"
+    missing = [
+        column for column in ("date", "sku", "market", "rating") if column not in frame.columns
+    ]
+    required_error = ["review_text"] if "review_text" not in frame.columns else []
+    if required_error:
         return ReviewImportPreview(
             rows=[],
             errors=[
-                RowError(row_number=1, field=column, message="缺少必填列")
-                for column in missing
+                RowError(row_number=1, field=column, message="未识别到对应列，请确认字段映射")
+                for column in required_error
             ],
             filename=filename,
             sha256=digest,
+            column_mapping=mapping,
+            missing_columns=missing + required_error,
+            mapping_details=suggest_column_mapping(
+                [str(column) for column in frame.columns], domain="customer_feedback"
+            ),
+            readiness=assess_readiness(
+                domain="customer_feedback", mapped_fields=set(mapping), row_count=len(frame.index)
+            ),
         )
+
+    for column in ("date", "sku", "market", "rating"):
+        if column not in frame.columns:
+            frame[column] = None
 
     for column in REVIEW_OPTIONAL_COLUMNS:
         if column not in frame.columns:
             frame[column] = ""
 
     for index, record in frame[REVIEW_REQUIRED_COLUMNS + REVIEW_OPTIONAL_COLUMNS].iterrows():
-        values = {key: ("" if pd.isna(value) else value) for key, value in record.to_dict().items()}
+        values = {
+            key: (None if pd.isna(value) else value) for key, value in record.to_dict().items()
+        }
         try:
             rows.append(ReviewRow.model_validate(values))
         except ValidationError as exc:
@@ -205,6 +258,26 @@ def preview_review_csv(source: str | Path | bytes | BinaryIO) -> ReviewImportPre
 
     if not len(frame.index):
         errors.append(RowError(row_number=2, field="file", message="CSV 中没有评价数据"))
+    for row_number, row in enumerate(rows, start=2):
+        if not row.review_text:
+            errors.append(
+                RowError(
+                    row_number=row_number,
+                    field="review_text",
+                    message="缺少评价正文，不能进入反馈分析",
+                )
+            )
+        elif any(
+            marker in row.review_text.casefold()
+            for marker in NON_REVIEW_PLACEHOLDER_MARKERS
+        ):
+            errors.append(
+                RowError(
+                    row_number=row_number,
+                    field="review_text",
+                    message="该内容是来源说明，不是客户评价正文，不能导入或分析",
+                )
+            )
     ids = [row.review_id.casefold() for row in rows]
     for duplicate in sorted({item for item in ids if ids.count(item) > 1}):
         errors.append(
@@ -214,16 +287,32 @@ def preview_review_csv(source: str | Path | bytes | BinaryIO) -> ReviewImportPre
                 message=f"评价 ID 重复：{duplicate}",
             )
         )
-    markets = sorted({row.market.upper() for row in rows})
-    if len(markets) > 1:
-        errors.append(
-            RowError(
-                row_number=1,
-                field="market",
-                message=f"一个批次只能包含一个市场：{', '.join(markets)}",
-            )
+    # Mixed-market files remain valid; the batch is labeled MIXED rather than
+    # assigning the project target market to individual reviews.
+    analyzable_review_count = sum(
+        bool(row.review_text)
+        and not any(
+            marker in row.review_text.casefold()
+            for marker in NON_REVIEW_PLACEHOLDER_MARKERS
         )
-    return ReviewImportPreview(rows=rows, errors=errors, filename=filename, sha256=digest)
+        for row in rows
+    )
+    return ReviewImportPreview(
+        rows=rows,
+        errors=errors,
+        filename=filename,
+        sha256=digest,
+        column_mapping=mapping,
+        missing_columns=missing,
+        mapping_details=suggest_column_mapping(
+            [str(column) for column in frame.columns], domain="customer_feedback"
+        ),
+        readiness=assess_readiness(
+            domain="customer_feedback",
+            mapped_fields=set(mapping),
+            row_count=analyzable_review_count,
+        ),
+    )
 
 
 def _get_or_create_business_object(
@@ -261,6 +350,8 @@ def import_reviews(
     project_id: int,
     source: str | Path | bytes | BinaryIO,
     batch_name: str,
+    product_id: int | None = None,
+    session_token: str | None = None,
     upload_root: Path | None = None,
     session: Session | None = None,
 ) -> ReviewImportOutcome:
@@ -270,6 +361,15 @@ def import_reviews(
         raise ValueError(f"评价 CSV 未通过校验：{messages}")
     raw, _ = _read_source(source)
     with session_context(session) as db:
+        if product_id is not None:
+            from services.auth_service import require_session_member
+            from services.membership_service import require_project_role
+
+            actor, _ = require_session_member(session_token or "", project_id, session=db)
+            require_project_role(project_id, actor.id, {"owner"}, session=db)
+            product = db.get(BusinessObject, product_id)
+            if not product or product.project_id != project_id or product.object_type != "product":
+                raise ValueError("产品不属于当前项目。")
         existing_artifact = db.scalar(
             select(Artifact).where(
                 Artifact.project_id == project_id,
@@ -313,7 +413,11 @@ def import_reviews(
         batch = ReviewBatch(
             project_id=project_id,
             name=batch_name.strip() or preview.rows[0].batch,
-            market=preview.rows[0].market.upper(),
+            market=(
+                "MIXED"
+                if len({(row.market or "UNKNOWN").upper() for row in preview.rows}) > 1
+                else (preview.rows[0].market or "UNKNOWN").upper()
+            ),
             sample_size=0,
             prompt_version=TAXONOMY_VERSION,
         )
@@ -341,15 +445,20 @@ def import_reviews(
                 rating=row.rating,
                 sku=row.sku,
                 review_text=row.review_text,
+                review_date=datetime.combine(row.date, datetime.min.time()) if row.date else None,
             )
             db.add(review)
             db.flush()
-            product = _get_or_create_business_object(
-                db,
-                project_id=project_id,
-                object_type="product",
-                external_key=row.sku,
-                display_name=row.sku,
+            product = (
+                db.get(BusinessObject, product_id)
+                if product_id is not None
+                else _get_or_create_business_object(
+                    db,
+                    project_id=project_id,
+                    object_type="product",
+                    external_key=row.sku,
+                    display_name=row.sku,
+                )
             )
             related_objects = []
             for object_type, key in (
@@ -380,7 +489,7 @@ def import_reviews(
                     "order_id": row.order_id,
                     "production_batch": row.production_batch,
                     "supplier": row.supplier,
-                    "date": row.date.isoformat(),
+                    "date": row.date.isoformat() if row.date else None,
                 },
                 excerpt=row.review_text,
                 business_object_id=product.id if product else None,
@@ -399,17 +508,50 @@ def import_reviews(
             inserted += 1
 
         batch.sample_size = inserted
-        dates = [row.date for row in preview.rows]
+        dates = [row.date for row in preview.rows if row.date is not None]
         metadata = ReviewImportMetadata(
             project_id=project_id,
             batch_id=batch.id,
             artifact_id=artifact.id,
             source_sha256=preview.sha256,
-            time_window_start=pd.Timestamp(min(dates)).to_pydatetime(),
-            time_window_end=pd.Timestamp(max(dates)).to_pydatetime(),
+            time_window_start=(
+                pd.Timestamp(min(dates)).to_pydatetime() if dates else None
+            ),
+            time_window_end=(pd.Timestamp(max(dates)).to_pydatetime() if dates else None),
             taxonomy_version=TAXONOMY_VERSION,
         )
         db.add(metadata)
+        if product_id is not None:
+            from services.product_identity_service import assign_product
+
+            # Explicit assignment is an owner operation; procurement/quality may import
+            # legacy batches but cannot certify an identity on behalf of the owner.
+            for kind, entity_id in (("artifact", artifact.id), ("review_batch", batch.id)):
+                assign_product(
+                    project_id=project_id,
+                    session_token=session_token,
+                    product_id=product_id,
+                    kind=kind,
+                    entity_id=entity_id,
+                    session=db,
+                )
+            for item in db.scalars(
+                select(Evidence)
+                .join(Review, Evidence.source_entity_id == Review.id)
+                .where(
+                    Evidence.project_id == project_id,
+                    Evidence.source_entity_type == "review",
+                    Review.batch_id == batch.id,
+                )
+            ):
+                assign_product(
+                    project_id=project_id,
+                    session_token=session_token,
+                    product_id=product_id,
+                    kind="evidence",
+                    entity_id=item.id,
+                    session=db,
+                )
         db.add(
             AuditEvent(
                 project_id=project_id,
@@ -491,8 +633,7 @@ def analyze_review_batch(
                 )
             )
             finding_by_theme = {
-                finding.finding_type.rsplit(":", maxsplit=1)[-1]: finding
-                for finding in findings
+                finding.finding_type.rsplit(":", maxsplit=1)[-1]: finding for finding in findings
             }
             return sorted(
                 [
@@ -736,4 +877,3 @@ def apply_comparison_to_improvement(
         record.limitation_note = comparison.limitation_note
         db.flush()
         return record
-

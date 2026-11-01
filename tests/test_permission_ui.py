@@ -99,8 +99,8 @@ def test_role_notice_states_backend_is_authoritative(monkeypatch) -> None:
 
     assert len(messages) == 1
     assert "岗位来自项目成员记录" in messages[0]
-    assert "本地用户选择仅用于演示，不等于登录认证" in messages[0]
-    assert "最终权限仍由后端校验" in messages[0]
+    assert "登录" in messages[0]
+    assert "最终权限仍由后端按项目成员关系校验" in messages[0]
 
 
 @pytest.mark.parametrize("page", PAGES, ids=lambda path: path.name)

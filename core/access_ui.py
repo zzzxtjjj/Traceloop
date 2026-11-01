@@ -60,5 +60,5 @@ def render_user_error(exc: Exception, *, fallback: str = DEFAULT_ERROR_MESSAGE) 
 def render_role_boundary_notice(role: str) -> None:
     st.caption(
         f"当前项目岗位：{role}。岗位来自项目成员记录；"
-        "本地用户选择仅用于演示，不等于登录认证；最终权限仍由后端校验。"
+        "身份来自服务端登录会话；最终权限仍由后端按项目成员关系校验。"
     )

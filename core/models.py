@@ -1,6 +1,16 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -20,6 +30,7 @@ class Project(Base):
     product_name: Mapped[str] = mapped_column(String(160))
     access_code_hash: Mapped[str] = mapped_column(String(256))
     markets_json: Mapped[str] = mapped_column(Text, default='["US", "DE"]')
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
@@ -31,6 +42,12 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str | None] = mapped_column(String(256), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    force_password_change: Mapped[bool] = mapped_column(Boolean, default=False)
+    email_verification_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    email_verification_code_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    email_verification_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    email_verification_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
 
@@ -46,11 +63,68 @@ class AuthSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class AuthThrottle(Base):
+    __tablename__ = "auth_throttles"
+
+    email_digest: Mapped[str] = mapped_column(String(64), primary_key=True)
+    failures: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ProductEntityLink(Base):
+    """Explicit, optional product identity; historical rows remain unassigned."""
+
+    __tablename__ = "product_entity_links"
+    __table_args__ = (
+        CheckConstraint(
+            "(artifact_id IS NOT NULL) + (extraction_id IS NOT NULL) + "
+            "(evidence_id IS NOT NULL) + (generation_id IS NOT NULL) + "
+            "(review_batch_id IS NOT NULL) + (finding_id IS NOT NULL) + "
+            "(improvement_id IS NOT NULL) + (validation_id IS NOT NULL) = 1",
+            name="ck_product_entity_single_target",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("business_objects.id"), index=True)
+    artifact_id: Mapped[int | None] = mapped_column(
+        ForeignKey("artifacts.id"), nullable=True, unique=True
+    )
+    extraction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("document_extractions.id"), nullable=True, unique=True
+    )
+    evidence_id: Mapped[int | None] = mapped_column(
+        ForeignKey("evidence.id"), nullable=True, unique=True
+    )
+    generation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("generations.id"), nullable=True, unique=True
+    )
+    review_batch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("review_batches.id"), nullable=True, unique=True
+    )
+    finding_id: Mapped[int | None] = mapped_column(
+        ForeignKey("findings.id"), nullable=True, unique=True
+    )
+    improvement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("improvement_records.id"), nullable=True, unique=True
+    )
+    validation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("validation_results.id"), nullable=True, unique=True
+    )
+    original_generation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("generations.id"), nullable=True
+    )
+    revised_generation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("generations.id"), nullable=True
+    )
+    assigned_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+
 class ProjectMember(Base):
     __tablename__ = "project_members"
-    __table_args__ = (
-        UniqueConstraint("project_id", "user_id", name="uq_project_member_user"),
-    )
+    __table_args__ = (UniqueConstraint("project_id", "user_id", name="uq_project_member_user"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True)
@@ -185,6 +259,11 @@ class Task(Base):
     source_type: Mapped[str] = mapped_column(String(40), default="manual")
     source_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    assignee_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    priority: Mapped[str] = mapped_column(String(20), default="medium")
     owner_role: Mapped[str] = mapped_column(String(30))
     status: Mapped[str] = mapped_column(String(20), default="draft")
     acceptance_criteria_json: Mapped[str] = mapped_column(Text, default="[]")
@@ -227,9 +306,10 @@ class Review(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     batch_id: Mapped[int] = mapped_column(ForeignKey("review_batches.id"), index=True)
     external_id: Mapped[str] = mapped_column(String(100))
-    rating: Mapped[int] = mapped_column(Integer)
-    sku: Mapped[str] = mapped_column(String(100))
-    review_text: Mapped[str] = mapped_column(Text)
+    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sku: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    review_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Insight(Base):
@@ -482,4 +562,3 @@ class RuleCheckRecord(Base):
     input_hash: Mapped[str] = mapped_column(String(64), index=True)
     human_review_status: Mapped[str] = mapped_column(String(30), default="pending_review")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
-

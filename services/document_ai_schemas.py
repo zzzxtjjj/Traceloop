@@ -154,6 +154,41 @@ class DocumentRisk(BaseModel):
         return self
 
 
+class DynamicAttribute(BaseModel):
+    """An attribute discovered from the document, without a fixed industry template."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+
+    field_name: str = Field(min_length=1, max_length=120)
+    display_name: str = Field(min_length=1, max_length=160)
+    value: str | None = Field(default=None, max_length=2_000)
+    unit: str | None = Field(default=None, max_length=80)
+    source_file: str | None = Field(default=None, max_length=255)
+    source_location: SourceLocation | None = None
+    evidence: list[EvidenceQuote] = Field(default_factory=list, max_length=20)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    review_status: Literal["needs_review", "confirmed", "rejected"] = "needs_review"
+    epistemic_status: EpistemicStatus = "explicit"
+    source_chunk_refs: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_attribute_evidence(self):
+        if self.value is not None and self.epistemic_status != "unknown" and not self.evidence:
+            raise ValueError("A discovered attribute with a value must cite source Evidence")
+        if self.epistemic_status == "unknown" and self.value is not None:
+            raise ValueError("Unknown attributes must not contain a guessed value")
+        return self
+
+
+class DocumentClassification(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
+
+    document_type: str = Field(min_length=1, max_length=120)
+    business_scenarios: list[str] = Field(default_factory=list, max_length=20)
+    entities: list[str] = Field(default_factory=list, max_length=30)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
 class DocumentAnalysisOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -163,6 +198,14 @@ class DocumentAnalysisOutput(BaseModel):
     conflicts: list[DocumentConflict] = Field(max_length=50)
     missing_information: list[InformationGap] = Field(max_length=100)
     risks: list[DocumentRisk] = Field(max_length=100)
+    classification: DocumentClassification = Field(
+        default_factory=lambda: DocumentClassification(
+            document_type="unclassified business document",
+            business_scenarios=[],
+            entities=[],
+        )
+    )
+    dynamic_attributes: list[DynamicAttribute] = Field(default_factory=list, max_length=200)
     review_required: Literal[True] = True
     publishable: Literal[False] = False
 

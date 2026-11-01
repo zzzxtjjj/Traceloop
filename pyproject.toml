@@ -11,4 +11,7 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
 "core/theme.py" = ["E501"]
+"services/document_parser.py" = ["E501"]
+"tests/test_xlsx_parser.py" = ["E501"]
+"scripts/generate_acceptance_fixtures.py" = ["E501"]
 

@@ -57,9 +57,7 @@ def test_project_creation_can_atomically_create_owner_membership(db_session) -> 
 
     membership = require_project_role(project.id, owner.id, {"owner"}, session=db_session)
     assert membership.status == "active"
-    assert [item.id for item in list_user_projects(owner.id, session=db_session)] == [
-        project.id
-    ]
+    assert [item.id for item in list_user_projects(owner.id, session=db_session)] == [project.id]
 
 
 def test_legacy_project_creation_remains_compatible_and_access_code_grants_no_member(
@@ -71,9 +69,7 @@ def test_legacy_project_creation_remains_compatible_and_access_code_grants_no_me
 
     assert verify_access_code("demo2026", project.access_code_hash)
     assert not list(
-        db_session.scalars(
-            select(ProjectMember).where(ProjectMember.project_id == project.id)
-        )
+        db_session.scalars(select(ProjectMember).where(ProjectMember.project_id == project.id))
     )
     with pytest.raises(ProjectAccessDeniedError, match="无权"):
         require_project_member(project.id, user.id, session=db_session)
@@ -87,24 +83,23 @@ def test_owner_adds_member_idempotently_and_member_cannot_add_others(db_session)
         project_payload("Member project"), owner_user_id=owner.id, session=db_session
     )
 
-    first = add_project_member(
-        project.id, owner.id, quality.id, "quality", session=db_session
-    )
-    second = add_project_member(
-        project.id, owner.id, quality.id, "quality", session=db_session
-    )
+    first = add_project_member(project.id, owner.id, quality.id, "quality", session=db_session)
+    second = add_project_member(project.id, owner.id, quality.id, "quality", session=db_session)
 
     assert first.id == second.id
-    assert db_session.scalar(
-        select(text("count(*)")).select_from(ProjectMember).where(
-            ProjectMember.project_id == project.id,
-            ProjectMember.user_id == quality.id,
+    assert (
+        db_session.scalar(
+            select(text("count(*)"))
+            .select_from(ProjectMember)
+            .where(
+                ProjectMember.project_id == project.id,
+                ProjectMember.user_id == quality.id,
+            )
         )
-    ) == 1
+        == 1
+    )
     with pytest.raises(ProjectAccessDeniedError, match="无权"):
-        add_project_member(
-            project.id, quality.id, other.id, "operations", session=db_session
-        )
+        add_project_member(project.id, quality.id, other.id, "operations", session=db_session)
     members = list_project_members(project.id, owner.id, session=db_session)
     assert {(item.user_id, item.role) for item in members} == {
         (owner.id, "owner"),
@@ -151,12 +146,10 @@ def test_membership_migration_supports_fresh_and_already_stamped_0001_databases(
     fresh_url = f"sqlite:///{(tmp_path / 'fresh.db').as_posix()}"
     upgrade_database(fresh_url)
     fresh_engine = create_engine(fresh_url)
-    assert {"users", "project_members"}.issubset(
-        set(inspect(fresh_engine).get_table_names())
-    )
+    assert {"users", "project_members"}.issubset(set(inspect(fresh_engine).get_table_names()))
     with fresh_engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0005_daily_report_identity"
+            "0011_task_assignee_integrity"
         )
 
     legacy_url = f"sqlite:///{(tmp_path / 'stamped-0001.db').as_posix()}"
@@ -172,19 +165,15 @@ def test_membership_migration_supports_fresh_and_already_stamped_0001_databases(
             )
         )
         connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32))"))
-        connection.execute(
-            text("INSERT INTO alembic_version VALUES ('0001_current_schema')")
-        )
+        connection.execute(text("INSERT INTO alembic_version VALUES ('0001_current_schema')"))
 
     upgrade_database(legacy_url)
 
-    assert {"users", "project_members"}.issubset(
-        set(inspect(legacy_engine).get_table_names())
-    )
+    assert {"users", "project_members"}.issubset(set(inspect(legacy_engine).get_table_names()))
     with legacy_engine.connect() as connection:
         assert connection.scalar(select(Project.name)) == "Preserved legacy project"
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0005_daily_report_identity"
+            "0011_task_assignee_integrity"
         )
 
 

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from streamlit.testing.v1 import AppTest
 
+import core.auth_ui
 import core.ui
 import services.membership_service
 
@@ -11,7 +12,9 @@ HOME_PAGE = ROOT_DIR / "pages" / "01_项目首页.py"
 
 
 def _user(user_id: int, name: str) -> SimpleNamespace:
-    return SimpleNamespace(id=user_id, display_name=name, email=f"u{user_id}@example.com")
+    return SimpleNamespace(
+        id=user_id, display_name=name, email=f"u{user_id}@example.com", force_password_change=False
+    )
 
 
 def _project(project_id: int, name: str) -> SimpleNamespace:
@@ -43,8 +46,8 @@ def test_homepage_allows_first_local_user_when_no_users(monkeypatch) -> None:
     app = AppTest.from_file(str(HOME_PAGE)).run(timeout=10)
 
     assert not app.exception
-    assert any("创建首个本地演示用户" in item.value for item in app.subheader)
-    assert any("不等于登录认证" in item.value for item in app.info)
+    assert any("请先登录" in item.value for item in app.info)
+    assert not app.sidebar.selectbox
 
 
 def test_non_member_cannot_see_unrelated_project(monkeypatch) -> None:
@@ -54,7 +57,8 @@ def test_non_member_cannot_see_unrelated_project(monkeypatch) -> None:
     calls: list[int] = []
 
     monkeypatch.setattr(core.ui, "render_sidebar_navigation", lambda: None)
-    monkeypatch.setattr(core.ui, "list_users", lambda: [user])
+    monkeypatch.setattr(core.auth_ui, "get_authenticated_user", lambda: user)
+    monkeypatch.setattr(core.ui, "get_authenticated_user", lambda: user)
 
     def fake_list_user_projects(user_id: int):
         calls.append(user_id)
@@ -81,7 +85,8 @@ def test_sidebar_role_comes_from_membership_record(monkeypatch) -> None:
     project = _project(21, "采购项目")
 
     monkeypatch.setattr(core.ui, "render_sidebar_navigation", lambda: None)
-    monkeypatch.setattr(core.ui, "list_users", lambda: [user])
+    monkeypatch.setattr(core.auth_ui, "get_authenticated_user", lambda: user)
+    monkeypatch.setattr(core.ui, "get_authenticated_user", lambda: user)
     monkeypatch.setattr(core.ui, "list_user_projects", lambda user_id: [project])
     monkeypatch.setattr(
         core.ui,

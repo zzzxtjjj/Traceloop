@@ -1,5 +1,7 @@
 import json
+import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -84,6 +86,8 @@ class OpenAICompatibleProvider:
         self.max_attempts = max_attempts
         self.json_object = json_object
         self.transport = transport or UrllibHttpTransport()
+        self.last_call = None
+        self.max_output_tokens = 8192
 
     @classmethod
     def from_settings(
@@ -164,7 +168,7 @@ class OpenAICompatibleProvider:
         # Business schemas and evidence references remain validated locally.
         if self.json_object or urlsplit(self.base_url).hostname == "api.deepseek.com":
             payload["response_format"] = {"type": "json_object"}
-            payload["max_tokens"] = 8192
+            payload["max_tokens"] = self.max_output_tokens
             messages[0]["content"] += (
                 " 用简体中文填写说明性文字，保留 JSON 字段名、枚举值及原文引用。"
                 " Return a JSON object conforming to this JSON Schema: "
@@ -172,6 +176,12 @@ class OpenAICompatibleProvider:
             )
         if urlsplit(self.base_url).hostname == "api.deepseek.com":
             payload["thinking"] = {"type": "disabled"}
+        started = time.perf_counter()
+        self.last_call = {
+            "requested_model": self.model_name,
+            "requested_at": datetime.now(UTC).isoformat(),
+            "status": "started",
+        }
         try:
             response = self.transport.post(
                 url=self.endpoint,
@@ -183,11 +193,30 @@ class OpenAICompatibleProvider:
                 timeout=self.timeout_seconds,
             )
         except ModelTimeoutError:
+            self.last_call.update(
+                status="timeout", elapsed_ms=round((time.perf_counter() - started) * 1000)
+            )
             raise
         except TimeoutError as exc:
             raise ModelTimeoutError("模型调用超时，请稍后重试。") from exc
+        self.last_call.update(
+            http_status=response.status_code,
+            elapsed_ms=round((time.perf_counter() - started) * 1000),
+            status="response_received",
+        )
+        try:
+            envelope = json.loads(response.body.decode("utf-8"))
+            self.last_call.update(actual_model=envelope.get("model"), usage=envelope.get("usage"))
+        except (ValueError, UnicodeDecodeError, AttributeError):
+            pass
         self._raise_for_status(response.status_code)
-        return self._extract_content(response.body)
+        extracted = self._extract_content(response.body)
+        if isinstance(extracted, str):
+            preview = extracted[:12000]
+        else:
+            preview = json.dumps(extracted, ensure_ascii=False)[:12000]
+        self.last_call["response_preview"] = preview
+        return extracted
 
     @staticmethod
     def _raise_for_status(status_code: int) -> None:

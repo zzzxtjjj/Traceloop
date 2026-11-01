@@ -34,3 +34,20 @@ def test_mixed_currency_is_rejected() -> None:
     assert not preview.is_valid
     assert any(error.field == "currency" for error in preview.errors)
 
+
+def test_public_supplier_headers_are_mapped_without_exact_names() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "data"
+        / "acceptance"
+        / "public_benchmark"
+        / "philips_na120"
+        / "04_supplier_listings"
+        / "supplier_listing_comparison.csv"
+    )
+    preview = preview_quote_csv(source)
+    assert preview.column_mapping["Supplier Name"]["canonical_field"] == "supplier"
+    assert preview.column_mapping["Unit Price Range"]["canonical_field"] == "unit_price"
+    assert preview.column_mapping["Lead Time"]["canonical_field"] == "lead_time_days"
+    assert preview.readiness["operations"]["price_comparison"] is True
+    assert preview.mapped_rows[0]["supplier"]

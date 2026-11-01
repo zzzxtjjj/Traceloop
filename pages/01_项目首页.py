@@ -6,6 +6,7 @@ import streamlit as st
 from pydantic import ValidationError
 
 from core.access_ui import render_user_error
+from core.auth_ui import get_authenticated_user
 from core.db import init_db
 from core.errors import ProjectAccessDeniedError
 from core.schemas import ProjectCreate
@@ -19,7 +20,7 @@ from core.ui import ROLE_LABELS, render_sidebar
 from services.imports import import_quotes, list_quote_artifacts
 from services.membership_service import (
     add_project_member,
-    create_user,
+    can_create_projects,
     list_project_members,
     list_user_projects,
     list_users,
@@ -32,81 +33,46 @@ from services.project_service import (
 
 init_db()
 DEMO_FILE = Path(__file__).resolve().parents[1] / "data" / "demo" / "supplier_quotes.csv"
+ACCEPTANCE_ROOT = Path(__file__).resolve().parents[1] / "data" / "acceptance"
+DEMO_PROJECTS = {
+    "demo1": ("便携式空气炸锅 4L", ACCEPTANCE_ROOT / "demo1" / "supplier_quotes_30.csv"),
+    "demo2": ("桌面空气净化器", ACCEPTANCE_ROOT / "demo2" / "supplier_quotes_30.csv"),
+    "demo3": ("多功能电热水壶", ACCEPTANCE_ROOT / "demo3" / "supplier_quotes_30.csv"),
+}
 MEMBER_ROLES = ["procurement", "operations", "quality", "owner"]
 
 st.set_page_config(page_title="项目首页 · TradeLoop", page_icon="🌊", layout="wide")
-apply_brand_theme()
+apply_brand_theme(require_auth=True)
 render_page_header(
     "PROJECT JOURNAL · 项目航海志",
     "选择项目，开始处理业务",
-    "选择本地演示用户后，只能查看其已加入的项目；每个人可执行的操作由其项目岗位决定。",
+    "登录后只能查看自己加入的项目；每个人可执行的操作由其项目岗位决定。",
 )
 
 project_id, role = render_sidebar(require_unlock=True)
-users = list_users()
-
-if not users:
-    st.subheader("创建首个本地演示用户")
-    st.info("本地演示身份选择不等于登录认证；它用于演示项目成员和岗位权限。")
-    with st.form("create_first_user", clear_on_submit=True):
-        display_name = st.text_input("显示名称", placeholder="例如：项目负责人")
-        email = st.text_input("邮箱", placeholder="例如：owner@example.com")
-        create_user_submitted = st.form_submit_button("创建演示用户", width="stretch")
-    if create_user_submitted:
-        try:
-            user = create_user(display_name, email)
-            st.session_state["current_user_id"] = user.id
-            st.success("首个本地演示用户已创建。")
-            st.rerun()
-        except ValueError as exc:
-            render_user_error(exc, fallback="用户创建失败，请检查名称和邮箱。")
-    render_security_note()
-    render_footer()
+current_user = get_authenticated_user()
+if current_user is None:
     st.stop()
-
-current_user_id = st.session_state.get("current_user_id")
-current_user = next((item for item in users if item.id == current_user_id), users[0])
 current_user_id = current_user.id
-st.session_state["current_user_id"] = current_user_id
-st.caption(
-    f"当前本地演示用户：{current_user.display_name}。这不是登录认证；"
-    "访问码也不会把用户自动加入项目。"
-)
+users = list_users(include_inactive=True)
 
-with st.expander("创建另一个本地演示用户"):
-    st.caption("创建用户不会自动把该用户加入任何项目；项目负责人需在下方成员区单独添加。")
-    with st.form("create_additional_user", clear_on_submit=True):
-        additional_name = st.text_input("新用户显示名称")
-        additional_email = st.text_input("新用户邮箱")
-        additional_user_submitted = st.form_submit_button("创建本地演示用户")
-    if additional_user_submitted:
-        try:
-            create_user(additional_name, additional_email)
-            st.success("新用户已创建，但尚未加入任何项目。")
-            st.rerun()
-        except ValueError as exc:
-            render_user_error(exc, fallback="用户创建失败，请检查名称和邮箱。")
+is_owner = role == ROLE_LABELS["owner"]
+can_create = can_create_projects(current_user_id) or is_owner
 
-left, right = st.columns(2)
-
-with left:
-    st.subheader("创建项目档案")
-    st.caption("新项目会把当前用户登记为项目负责人。")
-    with st.form("create_project_form", clear_on_submit=True):
-        name = st.text_input("项目名称", placeholder="例如：秋季新品出海")
-        product_name = st.text_input("产品名称", placeholder="例如：真空保温杯")
-        markets = st.multiselect(
-            "目标市场",
-            options=["US", "DE"],
-            default=["US", "DE"],
-            format_func=lambda item: {"US": "美国", "DE": "德国"}[item],
-        )
-        access_code = st.text_input(
-            "项目访问码",
-            type="password",
-            help="至少 8 位，只保存加盐哈希；它是成员权限后的第二道解锁。",
-        )
-        submitted = st.form_submit_button("创建项目", width="stretch")
+if can_create:
+    with st.expander("＋ 新建项目", expanded=False):
+        st.caption("只有项目负责人可以新建项目。新项目会把当前用户登记为负责人。")
+        with st.form("create_project_form", clear_on_submit=True):
+            name = st.text_input("项目名称", placeholder="例如：秋季新品出海")
+            product_name = st.text_input("产品名称", placeholder="例如：真空保温杯")
+            markets = st.multiselect(
+                "目标市场",
+                options=["US", "DE"],
+                default=["US", "DE"],
+                format_func=lambda item: {"US": "美国", "DE": "德国"}[item],
+            )
+            access_code = st.text_input("项目访问码", type="password", help="至少 8 位")
+            submitted = st.form_submit_button("创建项目", width="stretch")
 
     if submitted:
         try:
@@ -116,7 +82,11 @@ with left:
                 access_code=access_code,
                 markets=markets,
             )
-            project = create_project(payload, owner_user_id=current_user_id)
+            project = create_project(
+                payload,
+                owner_user_id=current_user_id,
+                require_existing_owner=True,
+            )
             unlocked = set(st.session_state.get("unlocked_project_ids", []))
             unlocked.add(project.id)
             st.session_state["unlocked_project_ids"] = list(unlocked)
@@ -129,32 +99,44 @@ with left:
         except (ProjectNameExistsError, ProjectAccessDeniedError) as exc:
             render_user_error(exc)
 
-with right:
-    st.subheader("试航项目")
-    st.write("将创建保温杯新品项目，并导入 3 家供应商的标准报价。")
+else:
+    st.info("当前账号不是项目负责人。新建项目由负责人统一管理；你可以进入已加入的项目继续工作。")
+
+left, right = st.columns(2)
+with left:
+    st.subheader("小家电演示项目")
+    st.write("负责人可以从这里进入三个预置小家电项目，分别用于测试报价、客户反馈和商品资料流程。")
     st.code("演示访问码：demo2026", language=None)
-    if st.button("加载演示项目", type="primary", width="stretch"):
+    selected_demo = st.selectbox(
+        "选择演示项目",
+        options=list(DEMO_PROJECTS),
+        format_func=lambda item: f"{item} · {DEMO_PROJECTS[item][0]}",
+    )
+    if st.button("进入演示项目", type="primary", width="stretch", disabled=not can_create):
+        demo_product, demo_file = DEMO_PROJECTS[selected_demo]
         accessible_projects = list_user_projects(current_user_id)
-        project = next(
-            (item for item in accessible_projects if item.name == "保温杯新品出海"),
-            None,
-        )
-        existing_project = get_project_by_name("保温杯新品出海")
+        project = next((item for item in accessible_projects if item.name == selected_demo), None)
+        existing_project = get_project_by_name(selected_demo)
         if project is None and existing_project is not None:
             render_user_error(ProjectAccessDeniedError("项目存在但当前用户不是成员"))
         else:
             if project is None:
                 project = create_project(
                     ProjectCreate(
-                        name="保温杯新品出海",
-                        product_name="真空保温杯 750ml",
+                        name=selected_demo,
+                        product_name=demo_product,
                         access_code="demo2026",
                         markets=["US", "DE"],
                     ),
                     owner_user_id=current_user_id,
+                    require_existing_owner=True,
                 )
             if not list_quote_artifacts(project.id):
-                import_quotes(project.id, DEMO_FILE, "首轮供应商报价")
+                import_quotes(
+                    project.id,
+                    demo_file if demo_file.exists() else DEMO_FILE,
+                    "首轮供应商报价",
+                )
             unlocked = set(st.session_state.get("unlocked_project_ids", []))
             unlocked.add(project.id)
             st.session_state["unlocked_project_ids"] = list(unlocked)
@@ -185,16 +167,14 @@ if project_id is not None:
     st.subheader("项目成员与岗位")
     try:
         memberships = list_project_members(project_id, current_user_id)
-        users_by_id = {user.id: user for user in users}
+        users_by_id = {user.id: user for user in list_users(include_inactive=True)}
         member_rows = []
         for membership in memberships:
             member_user = users_by_id.get(membership.user_id)
             member_rows.append(
                 {
                     "成员": (
-                        member_user.display_name
-                        if member_user
-                        else f"用户 {membership.user_id}"
+                        member_user.display_name if member_user else f"用户 {membership.user_id}"
                     ),
                     "邮箱": member_user.email if member_user else "不可用",
                     "岗位": ROLE_LABELS.get(membership.role, membership.role),

@@ -1,6 +1,7 @@
 """Controlled project file storage and authorized download primitives."""
 
 import hashlib
+import io
 import mimetypes
 import re
 from pathlib import Path
@@ -15,8 +16,32 @@ from core.errors import CrossProjectReferenceError
 from core.models import Artifact
 from services.auth_service import require_session_member
 
-ALLOWED_EXTENSIONS = {".csv", ".txt", ".pdf", ".docx", ".xlsx"}
+ALLOWED_EXTENSIONS = {
+    ".csv",
+    ".txt",
+    ".pdf",
+    ".docx",
+    ".xlsx",
+    ".png",
+    ".jpg",
+    ".jpeg",
+}
 MAX_FILE_SIZE = 20 * 1024 * 1024
+
+
+def list_project_files(
+    *, project_id: int, session_token: str, session: Session | None = None
+) -> list[Artifact]:
+    """Return only files visible to an authenticated project member."""
+    with session_context(session) as db:
+        require_session_member(session_token, project_id, session=db)
+        return list(
+            db.scalars(
+                select(Artifact)
+                .where(Artifact.project_id == project_id)
+                .order_by(Artifact.uploaded_at.desc(), Artifact.id.desc())
+            )
+        )
 
 
 def _read_source(source: bytes | bytearray | BinaryIO) -> bytes:
@@ -49,6 +74,14 @@ def _validate_content(filename: str, raw: bytes) -> str:
     elif suffix in {".docx", ".xlsx"}:
         if not raw.startswith(b"PK\x03\x04"):
             raise ValueError("MIME_CONTENT_MISMATCH")
+    elif suffix in {".png", ".jpg", ".jpeg"}:
+        try:
+            from PIL import Image
+
+            with Image.open(io.BytesIO(raw)) as image:
+                image.verify()
+        except Exception as exc:
+            raise ValueError("MIME_CONTENT_MISMATCH") from exc
     else:
         if b"\x00" in raw:
             raise ValueError("MIME_CONTENT_MISMATCH")
@@ -66,6 +99,10 @@ def _validate_content(filename: str, raw: bytes) -> str:
         return "text/csv"
     if suffix == ".txt":
         return "text/plain"
+    if suffix == ".png":
+        return "image/png"
+    if suffix in {".jpg", ".jpeg"}:
+        return "image/jpeg"
     return guessed_mime
 
 
@@ -88,7 +125,6 @@ def upload_project_file(
     digest = hashlib.sha256(raw).hexdigest()
     root = (upload_root or settings.upload_dir).resolve()
     project_dir = (root / str(project_id)).resolve()
-    project_dir.mkdir(parents=True, exist_ok=True)
     relative_location = Path(str(project_id)) / f"{digest}_{safe_name}"
     target = (root / relative_location).resolve()
     if root not in target.parents:
@@ -104,6 +140,7 @@ def upload_project_file(
         )
         if existing:
             return existing
+        project_dir.mkdir(parents=True, exist_ok=True)
         artifact = Artifact(
             project_id=project_id,
             artifact_type="project_file",

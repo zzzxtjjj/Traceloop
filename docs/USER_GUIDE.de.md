@@ -72,12 +72,10 @@ Tagesberichte mit Aufgaben verknüpfen und Arbeit, Referenzen, Hindernisse und n
 
 ## 6 · Einstellungen
 
+Unterstützte Geschäftsdateien: PDF, DOCX, XLSX, CSV, TXT, PNG und JPG/JPEG. HTML-Web-Snapshots bleiben nur als historische Quellen erhalten und werden nicht als Geschäftsdateien angenommen.
+
 Vereinfachtes Chinesisch, Englisch oder Deutsch wählen. Noch nicht übersetzte Hinweise erscheinen auf Chinesisch. Originalbelege und gespeicherte Daten bleiben unverändert.
 
 Funktioniert DeepSeek lokal, diese Konfiguration beibehalten. Zum Wechsel Anbieter, API-Adresse und Modellname aus der Kontoverwaltung übernehmen, zugehörigen Schlüssel eingeben und anwenden. Speichern sendet keine Anfrage; erst die nächste Analyse nutzt die Einstellungen. Mit kleinen, nicht sensiblen Daten testen. Nur DeepSeek wurde online geprüft; andere Einträge separat verifizieren.
 
 Über die Wiederherstellung zur lokalen `.env` zurückkehren. Einstellungen gelten nur für die Browsersitzung und können danach verloren gehen. Schlüssel nicht in Chats oder Screenshots teilen. Bei Fehlern Zugriff, Modell, Adresse, Guthaben und Netzwerk prüfen.
-
-## 7 · Begriffe und Zusammenarbeit
-
-Belege sind Originalaufzeichnungen. Probleme brauchen manuelle Prüfung. Aufgabenentwürfe sind noch nicht veröffentlicht. Folgeprüfungen beweisen keine Kausalität. Person A pflegt Dienste, Daten, KI und Rechte; Person B Seiten, Anleitung und Demo. Code teilen, aber keine Datenbanken, Schlüssel oder virtuellen Umgebungen.

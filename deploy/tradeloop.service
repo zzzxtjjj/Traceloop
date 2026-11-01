@@ -1,0 +1,22 @@
+[Unit]
+Description=BL TradeLoop Streamlit MVP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tradeloop
+Group=tradeloop
+WorkingDirectory=/opt/tradeloop
+EnvironmentFile=/etc/tradeloop/tradeloop.env
+ExecStart=/opt/tradeloop/.venv/bin/streamlit run app.py --server.address 127.0.0.1 --server.port 8502 --server.headless true --browser.gatherUsageStats false
+ExecStartPre=/opt/tradeloop/.venv/bin/python scripts/migrate_db.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/tradeloop /var/log/tradeloop
+
+[Install]
+WantedBy=multi-user.target

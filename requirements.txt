@@ -7,4 +7,8 @@ pytest>=8,<10
 ruff>=0.9,<1
 alembic>=1.13,<2
 qrcode>=8,<9
+pypdf>=6.0,<7
+pymupdf>=2.0,<3
+pytesseract>=0.3.13,<1
+pillow>=10,<14
 

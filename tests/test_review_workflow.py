@@ -3,6 +3,7 @@ import io
 import json
 
 import pytest
+from sqlalchemy import select
 
 from core.errors import ModelOutputValidationError
 from core.models import Finding, Project
@@ -275,9 +276,40 @@ def test_analysis_is_idempotent_and_preserves_reviewed_findings(db_session, tmp_
     second = analyze_review_batch(
         project_id=project.id, batch_id=outcome.batch_id, session=db_session
     )
-    second_finding_id = next(
-        item.finding_id for item in second if item.theme == "packaging_damage"
-    )
+    second_finding_id = next(item.finding_id for item in second if item.theme == "packaging_damage")
     assert second_finding_id == finding_id
     finding = db_session.get(Finding, finding_id)
     assert finding.review_status == "accepted"
+
+
+def test_import_with_missing_review_date_keeps_unknown_and_succeeds(db_session, tmp_path) -> None:
+    from core.models import Evidence, Review, ReviewBatch, ReviewImportMetadata
+
+    project = make_project(db_session)
+    payload = (
+        b"review_id,rating,sku,market,review_text\n"
+        b"R-NODATE,2,SKU-1,US,The product arrived damaged\n"
+    )
+    outcome = import_reviews(
+        project_id=project.id,
+        source=payload,
+        batch_name="Missing date",
+        upload_root=tmp_path,
+        session=db_session,
+    )
+    review = db_session.scalar(select(Review).where(Review.external_id == "R-NODATE"))
+    evidence = db_session.scalar(
+        select(Evidence).where(
+            Evidence.source_entity_type == "review",
+            Evidence.source_entity_id == review.id,
+        )
+    )
+    batch = db_session.get(ReviewBatch, outcome.batch_id)
+    metadata = db_session.scalar(
+        select(ReviewImportMetadata).where(ReviewImportMetadata.batch_id == batch.id)
+    )
+    assert review.review_date is None
+    assert '"date":null' in evidence.locator_json
+    assert batch.market == "US"
+    assert metadata.time_window_start is None
+    assert metadata.time_window_end is None

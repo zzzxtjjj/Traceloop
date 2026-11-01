@@ -27,7 +27,7 @@ REQUIRED_FILES = (
     "scripts/seed_demo.py",
 )
 REQUIRED_PAGES = tuple(f"0{number}_" for number in range(1, 8))
-EXPECTED_REVISION = "0005_daily_report_identity"
+EXPECTED_REVISION = "0009_task_management_fields"
 EXPECTED_DEMO_PROJECT = "保温杯新品出海"
 EXPECTED_DEMO_EMAILS = (
     "owner@tradeloop.demo",
@@ -88,7 +88,7 @@ def _check_pages(root: Path) -> ReleaseCheck:
 
 
 def _check_alembic_revision(root: Path) -> ReleaseCheck:
-    revision_file = root / "migrations" / "versions" / "0005_daily_report_identity.py"
+    revision_file = root / "migrations" / "versions" / (EXPECTED_REVISION + ".py")
     if not revision_file.is_file():
         return ReleaseCheck("alembic_revision", "fail", "缺少 0005 日报身份迁移文件。")
     source = revision_file.read_text(encoding="utf-8")

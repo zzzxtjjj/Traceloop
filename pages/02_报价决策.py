@@ -20,8 +20,8 @@ from services.supplier_scoring import DEFAULT_WEIGHTS, calculate_supplier_scores
 init_db()
 TEMPLATE_FILE = Path(__file__).resolve().parents[1] / "data" / "demo" / "supplier_quotes.csv"
 
-st.set_page_config(page_title="报价决策 · TradeLoop", page_icon="⚓", layout="wide")
-apply_brand_theme()
+st.set_page_config(page_title="供应商报价对比 · TradeLoop", page_icon="⚓", layout="wide")
+apply_brand_theme(require_auth=True)
 render_page_header(
     "SUPPLY CHAIN DESK · 供应链票据",
     "报价决策",
@@ -48,7 +48,8 @@ with upload_tab:
         file_name="supplier_quotes_template.csv",
         mime="text/csv",
     )
-    uploaded = st.file_uploader("上传报价 CSV", type=["csv"])
+    st.caption("上传供应商报价文件：应包含供应商、单价、币种、起订量、交期和付款条件。")
+    uploaded = st.file_uploader("上传供应商报价 CSV 或 XLSX", type=["csv", "xlsx"])
     batch_name = st.text_input("批次名称", value="供应商报价")
 
     if uploaded is not None:
@@ -93,7 +94,7 @@ with score_tab:
     st.write("调整权重。总和必须为 100%。")
     cols = st.columns(4)
     price = cols[0].number_input("价格", 0, 100, DEFAULT_WEIGHTS["price"])
-    moq = cols[1].number_input("MOQ", 0, 100, DEFAULT_WEIGHTS["moq"])
+    moq = cols[1].number_input("起订量（MOQ）", 0, 100, DEFAULT_WEIGHTS["moq"])
     lead_time = cols[2].number_input("交期", 0, 100, DEFAULT_WEIGHTS["lead_time"])
     quality = cols[3].number_input("质量风险", 0, 100, DEFAULT_WEIGHTS["quality"])
     weights = {"price": price, "moq": moq, "lead_time": lead_time, "quality": quality}

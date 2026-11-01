@@ -5,7 +5,9 @@ from types import ModuleType, SimpleNamespace
 import pytest
 from streamlit.testing.v1 import AppTest
 
+import core.auth_ui
 import core.config
+import core.product_ui
 import core.ui
 import services.review_service
 from core.config import Settings
@@ -23,7 +25,9 @@ PAGE = Path(__file__).resolve().parents[1] / "pages" / "04_差评改进.py"
 
 
 def _prepare_page(monkeypatch, *, configured: bool) -> AppTest:
-    user = SimpleNamespace(id=7, display_name="UI User", email="ui@example.com")
+    user = SimpleNamespace(
+        id=7, display_name="UI User", email="ui@example.com", force_password_change=False
+    )
     project = SimpleNamespace(
         id=1,
         name="UI Test",
@@ -31,6 +35,8 @@ def _prepare_page(monkeypatch, *, configured: bool) -> AppTest:
         markets_json='["US", "DE"]',
     )
     batch = SimpleNamespace(id=11, name="Before", market="US", sample_size=12)
+    monkeypatch.setattr(core.auth_ui, "resolve_session", lambda _token: user)
+    monkeypatch.setattr(core.product_ui, "select_product", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(core.ui, "list_users", lambda: [user])
     monkeypatch.setattr(core.ui, "list_user_projects", lambda _user_id: [project])
     monkeypatch.setattr(
@@ -59,7 +65,7 @@ def _prepare_page(monkeypatch, *, configured: bool) -> AppTest:
         ),
     )
     app = AppTest.from_file(str(PAGE))
-    app.session_state["current_user_id"] = user.id
+    app.session_state["auth_token"] = "unit-test-session"
     app.session_state["unlocked_project_ids"] = [project.id]
     app.session_state["active_project_id"] = project.id
     return app
@@ -168,8 +174,12 @@ def test_page_never_displays_api_key_or_offers_live_test_button(monkeypatch) -> 
         product_name="Bottle",
         markets_json='["US"]',
     )
-    user = SimpleNamespace(id=7, display_name="UI User", email="ui@example.com")
+    user = SimpleNamespace(
+        id=7, display_name="UI User", email="ui@example.com", force_password_change=False
+    )
     batch = SimpleNamespace(id=11, name="Before", market="US", sample_size=12)
+    monkeypatch.setattr(core.auth_ui, "resolve_session", lambda _token: user)
+    monkeypatch.setattr(core.product_ui, "select_product", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(core.ui, "list_users", lambda: [user])
     monkeypatch.setattr(core.ui, "list_user_projects", lambda _user_id: [project])
     monkeypatch.setattr(
@@ -189,7 +199,7 @@ def test_page_never_displays_api_key_or_offers_live_test_button(monkeypatch) -> 
         Settings(model_api_key=secret, model_name="safe-model"),
     )
     app = AppTest.from_file(str(PAGE))
-    app.session_state["current_user_id"] = user.id
+    app.session_state["auth_token"] = "unit-test-session"
     app.session_state["unlocked_project_ids"] = [project.id]
     app.session_state["active_project_id"] = project.id
 

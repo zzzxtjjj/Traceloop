@@ -6,13 +6,15 @@ import streamlit as st
 
 from core.access_ui import render_role_boundary_notice, render_user_error
 from core.config import settings
-from core.db import init_db
-from core.errors import TradeLoopError
+from core.db import init_db, session_context
+from core.errors import ProjectAccessDeniedError, TradeLoopError
+from core.product_ui import select_product
 from core.theme import apply_brand_theme, render_footer, render_page_header
 from core.ui import render_sidebar
 from services.app_preferences import runtime_config
 from services.finding_service import review_finding
 from services.model_readiness import check_model_readiness
+from services.product_identity_service import assign_product
 from services.review_service import (
     THEME_LABELS,
     analyze_review_batch,
@@ -21,6 +23,7 @@ from services.review_service import (
     import_reviews,
     list_batch_findings,
     list_review_batches,
+    preview_review_csv,
 )
 from services.task_service import (
     confirm_task,
@@ -72,25 +75,22 @@ def render_ai_run_summary(run) -> None:
     prompt_version = read_result_value(run, "prompt_version", default="-")
     status = read_result_value(run, "status", default="unknown")
     error_code = read_result_value(run, "error_code", default=None)
-    with st.expander("分析记录（需要时查看）"):
+    with st.expander("分析记录（详情）"):
         st.write(f"运行编号：{run_id}")
         st.write(f"使用模型：{model}")
         st.write(f"分析方案：{prompt_version}")
         st.write("结果：" + {"success": "分析成功", "failed": "分析失败"}.get(status, "处理中"))
     if error_code:
         error_message = AI_ERROR_MESSAGES.get(error_code, "模型调用失败。")
-        st.error(f"error_code：{error_code} · {error_message}")
+        with st.expander("查看失败原因"):
+            st.error(error_message)
 
 
 def render_model_configuration_status(readiness) -> None:
     """Show safe local configuration metadata without triggering a live request."""
     key_configured = "MODEL_API_KEY" not in readiness.missing_fields
     service_host = urlsplit(readiness.base_url).hostname or "未配置或无效"
-    status = (
-        "尚未真实联网验证"
-        if readiness.configured
-        else "配置不完整 · 尚未真实联网验证"
-    )
+    status = "尚未真实联网验证" if readiness.configured else "配置不完整 · 尚未真实联网验证"
     max_attempts = readiness.max_attempts
     first, second, third = st.columns(3)
     first.metric("API Key", "已配置" if key_configured else "未配置")
@@ -108,9 +108,7 @@ def render_model_configuration_status(readiness) -> None:
         st.warning("本地配置存在无效项，请运行离线检查命令并修正 .env。")
 
     with st.expander("模型 API 安全配置与检查命令"):
-        st.caption(
-            "只把真实密钥放在本机 .env 或部署 Secret 中，不要提交 Git 或放进截图。"
-        )
+        st.caption("只把真实密钥放在本机 .env 或部署 Secret 中，不要提交 Git 或放进截图。")
         st.code(
             "MODEL_API_KEY=<YOUR_API_KEY>\n"
             "MODEL_NAME=<YOUR_MODEL_NAME>\n"
@@ -241,9 +239,7 @@ def render_improvement_replay(
 ) -> None:
     """Show the measured feedback-to-recheck chain without implying causality."""
     st.markdown("**Improvement Replay / 改进复盘**")
-    st.caption(
-        "同一主题、同一统计口径、不同批次；复检结果用于观察变化，不自动证明措施造成变化。"
-    )
+    st.caption("同一主题、同一统计口径、不同批次；复检结果用于观察变化，不自动证明措施造成变化。")
     steps = [
         ("01", "首批反馈", f"{baseline_label} · n={comparison.baseline_sample_size}"),
         ("02", "人工确认", f"主题：{theme_label} · 形成待办行动"),
@@ -269,9 +265,10 @@ def render_improvement_replay(
     st.info(comparison.conclusion)
     st.warning(f"限制：{comparison.limitation_note}")
 
+
 init_db()
-st.set_page_config(page_title="差评改进 · TradeLoop", page_icon="〰️", layout="wide")
-apply_brand_theme()
+st.set_page_config(page_title="客户反馈与质量改进 · TradeLoop", page_icon="〰️", layout="wide")
+apply_brand_theme(require_auth=True)
 render_page_header(
     "QUALITY INSIGHTS · 客户声音",
     "客户评价与改进",
@@ -281,21 +278,21 @@ st.info(
     "操作顺序：① 导入评价 → ② 选择规则或 AI 分析 → ③ 核对原文并审核问题 → "
     "④ 发布改进任务 → ⑤ 用新评价检查变化。"
 )
+st.caption(
+    "这里上传的是客户反馈文件，例如评价编号、评价原文、评分和批次信息；本页面依据只代表客户反馈，不代表商品规格事实。"
+)
 project_id, role = render_sidebar()
 if project_id is None:
     st.warning("请先进入一个项目。")
     st.stop()
 render_role_boundary_notice(role)
+token = st.session_state.get("auth_token", "")
+product_id = select_product(project_id, token, owner=role == "项目负责人")
 
-st.info(
-    "可选择可复现的关键词规则分类，或在模型已配置时运行真实 AI 分类。"
-    "无论使用哪种方式，评价占比都不等同于商品实际故障率，原因假设也不代表责任认定。"
-)
 
 with st.expander("1 · 导入评价 CSV", expanded=not list_review_batches(project_id)):
     st.caption(
-        "必需列：review_id、batch、rating、date、sku、market、review_text；"
-        "可选列：order_id、production_batch、supplier。"
+        "系统会自动识别常见列名；批次号缺失时自动生成。日期、SKU、市场和评价正文缺失时不会伪造。"
     )
     st.download_button(
         "下载评价 CSV 示例",
@@ -305,12 +302,29 @@ with st.expander("1 · 导入评价 CSV", expanded=not list_review_batches(proje
     )
     uploaded = st.file_uploader("评价文件", type=["csv"], key="review_csv")
     batch_name = st.text_input("批次名称", placeholder="例如：包装改进前 · 2026-10")
-    if st.button("校验并导入", type="primary", disabled=uploaded is None):
+    preview = preview_review_csv(uploaded) if uploaded is not None else None
+    confirmed = False
+    if preview is not None:
+        st.write("系统字段映射：", preview.column_mapping)
+        if preview.missing_columns:
+            st.info(
+                "以下字段未在文件中识别到，系统会保留为空/未知，不会自行补全："
+                + "、".join(preview.missing_columns)
+            )
+        if preview.errors:
+            st.warning("；".join(f"{item.field}: {item.message}" for item in preview.errors[:8]))
+        st.caption(f"可导入记录：{len(preview.rows)} · 无效记录：{len(preview.errors)}")
+        confirmed = st.checkbox(
+            "我已确认字段映射和数据来源，允许导入", disabled=not preview.is_valid
+        )
+    if st.button("校验并导入", type="primary", disabled=uploaded is None or not confirmed):
         try:
             result = import_reviews(
                 project_id=project_id,
                 source=uploaded,
                 batch_name=batch_name,
+                product_id=product_id,
+                session_token=token,
             )
         except (TradeLoopError, ValueError) as exc:
             render_user_error(exc, fallback="评价文件校验失败，请检查字段和数据格式。")
@@ -350,9 +364,7 @@ st.caption("页面不提供在线测试按钮；模型请求只在用户主动�
 if model_configured:
     st.caption("AI 已配置。点击分析会使用当前服务；更换服务请前往“设置”。")
 else:
-    st.warning(
-        "模型配置不完整或无效。真实 AI 分析不可用；不会自动改用规则结果。"
-    )
+    st.warning("模型配置不完整或无效。真实 AI 分析不可用；不会自动改用规则结果。")
 
 if st.button("运行所选分类", type="primary"):
     if analysis_mode == "规则分类":
@@ -364,9 +376,7 @@ if st.button("运行所选分类", type="primary"):
         except (TradeLoopError, ValueError) as exc:
             render_user_error(exc, fallback="规则分类失败，请检查评价批次。")
         else:
-            st.success(
-                f"规则分类已生成 {len(summaries)} 个主题统计；重复运行不会覆盖人工审核。"
-            )
+            st.success(f"规则分类已生成 {len(summaries)} 个主题统计；重复运行不会覆盖人工审核。")
     elif not model_configured:
         st.error("模型未配置，未发起 AI 请求，也未生成 AI 分析结果。请在“设置”中配置模型服务。")
     elif analyze_review_batch_with_model is None:
@@ -387,13 +397,11 @@ if st.button("运行所选分类", type="primary"):
         else:
             finding_ids = read_result_value(result, "finding_ids", default=[])
             status = read_result_value(result, "status", default="success")
-            st.success(
-                f"真实 AI 分类完成：状态 {status}，"
-                f"生成 {len(finding_ids)} 个待审核问题。"
-            )
+            st.success(f"真实 AI 分类完成：状态 {status}，生成 {len(finding_ids)} 个待审核问题。")
             render_ai_run_summary(result)
 
-st.markdown("**最近一次 AI 运行**")
+st.markdown("**最近一次分析状态**")
+st.caption("页面只展示最近一次结果；技术信息按需展开，避免信息过载。")
 if get_latest_review_ai_run is None:
     st.caption("AI 运行查询接口尚未就绪。规则分类仍可正常使用。")
 else:
@@ -411,12 +419,27 @@ findings = list_batch_findings(project_id, selected_batch_id)
 if findings:
     st.markdown("### 3 · 查看问题、核对原文并审核")
     for finding in findings:
+        if product_id and role == "项目负责人":
+            if st.button(f"确认问题 #{finding.id} 属于当前产品", key=f"bind_finding_{finding.id}"):
+                try:
+                    assign_product(
+                        project_id=project_id,
+                        session_token=token,
+                        product_id=product_id,
+                        kind="finding",
+                        entity_id=finding.id,
+                    )
+                    st.success("产品关联已确认；这不代表问题已获人工验收。")
+                except (TradeLoopError, ValueError) as exc:
+                    render_user_error(exc)
         theme = finding.finding_type.rsplit(":", maxsplit=1)[-1]
         label = THEME_LABELS.get(theme, theme)
         classification_label = "真实 AI" if finding.model_run_id else "规则分类"
         review_label = {
-            "pending_review": "待你确认", "accepted": "已确认",
-            "revised": "已修改确认", "rejected": "已忽略",
+            "pending_review": "待你确认",
+            "accepted": "已确认",
+            "revised": "已修改确认",
+            "rejected": "已忽略",
         }.get(finding.review_status, "待处理")
         with st.expander(
             f"{label} · {classification_label} · {finding.review_status}",
@@ -428,10 +451,7 @@ if findings:
                 f"来源：{classification_label} · {review_label}"
             )
             if finding.model_run_id:
-                st.warning(
-                    "这是 AI 提出的待确认问题，"
-                    "不构成供应商、物流或员工责任认定。"
-                )
+                st.warning("这是 AI 提出的待确认问题，不构成供应商、物流或员工责任认定。")
             else:
                 st.caption("该问题来自可复现规则分类，不代表 AI 判断。")
 
@@ -537,22 +557,40 @@ if findings:
                         st.success(f"任务草稿 #{task.id} 已创建，尚未发布。")
                 if st.button("确认并发布改进任务", key=f"confirm_task_{finding.id}"):
                     try:
-                        task = create_task_from_finding(
-                            project_id=project_id,
-                            finding_id=finding.id,
-                        )
-                        if task.status == "draft":
-                            task = confirm_task(
+                        with session_context() as db:
+                            from services.auth_service import require_session_member
+
+                            _, member = require_session_member(token, project_id, session=db)
+                            if member.role != "owner":
+                                raise ProjectAccessDeniedError("只有负责人可以发布改进任务。")
+                            task = create_task_from_finding(
                                 project_id=project_id,
-                                task_id=task.id,
-                                confirmer_role=role,
+                                finding_id=finding.id,
+                                session=db,
                             )
-                        create_improvement_record(
-                            project_id=project_id,
-                            finding_id=finding.id,
-                            task_id=task.id,
-                            baseline_batch_id=selected_batch_id,
-                        )
+                            if task.status == "draft":
+                                task = confirm_task(
+                                    project_id=project_id,
+                                    task_id=task.id,
+                                    confirmer_role=role,
+                                    session=db,
+                                )
+                            improvement = create_improvement_record(
+                                project_id=project_id,
+                                finding_id=finding.id,
+                                task_id=task.id,
+                                baseline_batch_id=selected_batch_id,
+                                session=db,
+                            )
+                            if product_id:
+                                assign_product(
+                                    project_id=project_id,
+                                    session_token=token,
+                                    product_id=product_id,
+                                    kind="improvement",
+                                    entity_id=improvement.id,
+                                    session=db,
+                                )
                     except (TradeLoopError, ValueError) as exc:
                         render_user_error(exc, fallback="改进任务无法发布，请检查验收标准。")
                     else:
@@ -601,4 +639,3 @@ if len(batches) >= 2:
                 )
 
 render_footer()
-

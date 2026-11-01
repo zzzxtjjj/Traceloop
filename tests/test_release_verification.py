@@ -56,7 +56,7 @@ def make_release_tree(root: Path, *, with_database: bool = True) -> str:
         "alembic.ini",
         "scripts/migrate_db.py",
         "scripts/seed_demo.py",
-        "migrations/versions/0005_daily_report_identity.py",
+        "migrations/versions/0009_task_management_fields.py",
         "deliverables/poster/tradeloop_poster.svg",
         "deliverables/pitch/index.html",
         "deliverables/pitch/THREE_MINUTE_SCRIPT.md",
@@ -64,8 +64,8 @@ def make_release_tree(root: Path, *, with_database: bool = True) -> str:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("placeholder", encoding="utf-8")
-    (root / "migrations/versions/0005_daily_report_identity.py").write_text(
-        'revision = "0005_daily_report_identity"\n', encoding="utf-8"
+    (root / "migrations/versions/0009_task_management_fields.py").write_text(
+        'revision = "0009_task_management_fields"\n', encoding="utf-8"
     )
     (root / "deliverables/poster/tradeloop_poster.svg").write_text(
         '<svg xmlns="http://www.w3.org/2000/svg" width="800mm" height="1800mm"/>',
@@ -89,7 +89,7 @@ def make_release_tree(root: Path, *, with_database: bool = True) -> str:
                 role TEXT, status TEXT
             );
             CREATE TABLE alembic_version (version_num TEXT NOT NULL);
-            INSERT INTO alembic_version VALUES ('0005_daily_report_identity');
+            INSERT INTO alembic_version VALUES ('0009_task_management_fields');
             INSERT INTO projects VALUES (1, '保温杯新品出海');
             """
         )

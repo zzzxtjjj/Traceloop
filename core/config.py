@@ -31,10 +31,10 @@ def _positive_int_env(name: str, default: int) -> int:
 @dataclass(frozen=True)
 class Settings:
     root_dir: Path = ROOT_DIR
-    data_dir: Path = ROOT_DIR / "data"
-    upload_dir: Path = ROOT_DIR / "data" / "uploads"
+    data_dir: Path = Path(os.getenv("TRADELOOP_DATA_DIR") or ROOT_DIR / "data")
+    upload_dir: Path = Path(os.getenv("TRADELOOP_UPLOAD_DIR") or (data_dir / "uploads"))
     database_url: str = os.getenv("DATABASE_URL") or (
-        f"sqlite:///{ROOT_DIR / 'data' / 'tradeloop.db'}"
+        f"sqlite:///{data_dir / 'tradeloop.db'}"
     )
     model_api_key: str = os.getenv("MODEL_API_KEY", "")
     model_name: str = os.getenv("MODEL_NAME", "")

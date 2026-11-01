@@ -48,6 +48,8 @@ def generate_localized_copy(
     parent_id: int | None = None,
     feedback: str = "",
     provider=None,
+    product_id: int | None = None,
+    session_token: str | None = None,
     session: Session | None = None,
 ) -> Generation:
     """Owner confirms which source facts may be used. No automatic publishing."""
@@ -55,6 +57,17 @@ def generate_localized_copy(
     result = None
     with session_context(session) as db:
         require_project_role(project_id, user_id, {"owner"}, session=db)
+        if product_id is not None:
+            from services.auth_service import require_session_member
+            from services.product_identity_service import product_for
+
+            actor, _ = require_session_member(session_token or "", project_id, session=db)
+            if actor.id != user_id:
+                raise CrossProjectReferenceError("认证身份不匹配。")
+            if any(product_for(db, "evidence", item) != product_id for item in evidence_ids):
+                raise CrossProjectReferenceError("所选依据必须属于同一明确产品。")
+            if parent_id and product_for(db, "generation", parent_id) != product_id:
+                raise CrossProjectReferenceError("原版本不属于当前产品。")
         _require_project_market(db, project_id, market)
         language = target_language or MARKET_LANGUAGES[market]
         if language not in {"zh-CN", "en-US", "de-DE"}:
@@ -190,6 +203,9 @@ def generate_localized_copy(
                     content=json.dumps(
                         {
                             "platform": "google_merchant",
+                            "product_id": product_id,
+                            "needs_review": True,
+                            "publishable": False,
                             "sources": sources,
                             "ai_run_id": run.id,
                             "output": output.model_dump(),
@@ -199,6 +215,17 @@ def generate_localized_copy(
                 )
                 db.add(result)
                 db.flush()
+                if product_id is not None:
+                    from services.product_identity_service import assign_product
+
+                    assign_product(
+                        project_id=project_id,
+                        session_token=session_token,
+                        product_id=product_id,
+                        kind="generation",
+                        entity_id=result.id,
+                        session=db,
+                    )
                 db.add(
                     AuditEvent(
                         project_id=project_id,

@@ -1,4 +1,5 @@
 from datetime import date
+from datetime import date as date_type
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -56,6 +57,9 @@ class QuoteImportPreview(BaseModel):
     errors: list[RowError]
     filename: str
     sha256: str
+    column_mapping: dict[str, dict] = Field(default_factory=dict)
+    readiness: dict = Field(default_factory=dict)
+    mapped_rows: list[dict] = Field(default_factory=list)
 
     @property
     def is_valid(self) -> bool:
@@ -165,14 +169,14 @@ class StructuredAIOutput(BaseModel):
 class ReviewRow(BaseModel):
     review_id: str = Field(min_length=1, max_length=100)
     batch: str = Field(min_length=1, max_length=120)
-    rating: int = Field(ge=1, le=5)
-    date: date
-    sku: str = Field(min_length=1, max_length=100)
-    market: str = Field(min_length=2, max_length=10)
-    review_text: str = Field(min_length=2, max_length=5000)
-    order_id: str = Field(default="", max_length=120)
-    production_batch: str = Field(default="", max_length=120)
-    supplier: str = Field(default="", max_length=160)
+    rating: int | None = Field(default=None, ge=1, le=5)
+    date: date_type | None = None
+    sku: str | None = Field(default=None, max_length=100)
+    market: str | None = Field(default=None, max_length=30)
+    review_text: str | None = Field(default=None, max_length=5000)
+    order_id: str | None = Field(default=None, max_length=120)
+    production_batch: str | None = Field(default=None, max_length=120)
+    supplier: str | None = Field(default=None, max_length=160)
 
     @field_validator(
         "review_id",
@@ -186,7 +190,7 @@ class ReviewRow(BaseModel):
     )
     @classmethod
     def normalize_review_text_fields(cls, value: str) -> str:
-        return str(value).strip()
+        return None if value is None else str(value).strip()
 
 
 class ReviewImportPreview(BaseModel):
@@ -194,6 +198,10 @@ class ReviewImportPreview(BaseModel):
     errors: list[RowError]
     filename: str
     sha256: str
+    column_mapping: dict[str, str] = Field(default_factory=dict)
+    missing_columns: list[str] = Field(default_factory=list)
+    mapping_details: dict[str, dict] = Field(default_factory=dict)
+    readiness: dict = Field(default_factory=dict)
 
     @property
     def is_valid(self) -> bool:
@@ -302,4 +310,3 @@ class StructuredErrorResponse(BaseModel):
     code: str
     message: str
     retryable: bool = False
-

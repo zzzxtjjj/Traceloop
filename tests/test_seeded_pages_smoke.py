@@ -76,6 +76,7 @@ from pathlib import Path
 from streamlit.testing.v1 import AppTest
 
 from services.membership_service import get_user_by_email
+from services.auth_service import create_session
 from services.project_service import get_project_by_name
 
 root = Path.cwd()
@@ -98,7 +99,7 @@ if owner is None or project is None:
 for path in files:
     try:
         app = AppTest.from_file(str(path))
-        app.session_state["current_user_id"] = owner.id
+        app.session_state["auth_token"] = create_session(owner.id)
         app.session_state["active_project_id"] = project.id
         app.session_state["unlocked_project_ids"] = [project.id]
         app.run(timeout=15)
@@ -153,4 +154,4 @@ raise SystemExit(1 if failures else 0)
     assert summary_line is not None, f"child process returned no page summary:\n{result.stdout}"
     summary = json.loads(summary_line)
     assert not summary["failures"]
-    assert len(summary["results"]) == 9
+    assert len(summary["results"]) == 11

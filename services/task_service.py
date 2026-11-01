@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,6 +23,7 @@ from core.models import (
     ReviewBatch,
     Task,
     TaskSubmission,
+    User,
     utc_now,
 )
 from core.schemas import DailyRiskItem
@@ -49,6 +50,7 @@ class ProjectReviewSnapshot:
     pending_delivery_count: int
     blocker_report_count: int
     risks: list[DailyRiskItem]
+
 
 THEME_OWNER_ROLE = {
     "packaging_damage": "品控",
@@ -180,6 +182,51 @@ def create_task_from_requirement(
         return task
 
 
+def create_manual_task(
+    *,
+    project_id: int,
+    session_token: str,
+    title: str,
+    description: str,
+    assignee_user_id: int,
+    priority: str,
+    due_date: date,
+    acceptance_criteria: list[str],
+    session: Session | None = None,
+) -> Task:
+    """Create a published manual task after server-side owner/member checks."""
+    if priority not in {"low", "medium", "high", "urgent"}:
+        raise ValueError("优先级无效。")
+    if not title.strip() or not acceptance_criteria:
+        raise ValueError("任务名称和验收标准不能为空。")
+    with session_context(session) as db:
+        _actor, membership = require_session_member(session_token, project_id, session=db)
+        if membership.role not in TASK_PUBLISH_ROLES:
+            raise InvalidStateTransitionError("只有项目负责人可以创建任务。")
+        assignee = db.get(User, assignee_user_id)
+        if not assignee or not assignee.active:
+            raise CrossProjectReferenceError("任务负责人不存在。")
+        require_project_member(project_id, assignee_user_id, session=db)
+        task = Task(
+            project_id=project_id,
+            source_type="manual",
+            title=title.strip(),
+            description=description.strip(),
+            assignee_user_id=assignee_user_id,
+            owner_role=membership.role,
+            priority=priority,
+            status="todo",
+            confirmed=True,
+            acceptance_criteria_json=json.dumps(
+                [item.strip() for item in acceptance_criteria if item.strip()], ensure_ascii=False
+            ),
+            due_at=datetime.combine(due_date, datetime.min.time()),
+        )
+        db.add(task)
+        db.flush()
+        return task
+
+
 def publish_task(
     *,
     project_id: int,
@@ -266,9 +313,7 @@ def create_improvement_record(
             or task.project_id != project_id
             or baseline_batch.project_id != project_id
         ):
-            raise CrossProjectReferenceError(
-                "Finding、任务或基线评价批次不存在或不属于当前项目。"
-            )
+            raise CrossProjectReferenceError("Finding、任务或基线评价批次不存在或不属于当前项目。")
         if task.source_type != "finding" or task.source_id != finding_id:
             raise CrossProjectReferenceError("任务未关联指定 Finding，不能建立改进记录。")
         if not task.confirmed:
@@ -309,9 +354,7 @@ def create_improvement_record(
 def list_tasks(project_id: int, session: Session | None = None) -> list[Task]:
     with session_context(session) as db:
         return list(
-            db.scalars(
-                select(Task).where(Task.project_id == project_id).order_by(Task.id.desc())
-            )
+            db.scalars(select(Task).where(Task.project_id == project_id).order_by(Task.id.desc()))
         )
 
 
@@ -359,6 +402,33 @@ def update_task_status(
         )
         db.flush()
         return task
+
+
+def update_task_status_as_user(
+    *,
+    project_id: int,
+    task_id: int,
+    status: str,
+    session_token: str,
+    session: Session | None = None,
+) -> Task:
+    with session_context(session) as db:
+        actor, membership = require_session_member(session_token, project_id, session=db)
+        task = db.get(Task, task_id)
+        if not task or task.project_id != project_id:
+            raise CrossProjectReferenceError("任务不存在或不属于当前项目。")
+        if (
+            task.assignee_user_id not in {None, actor.id}
+            and membership.role not in TASK_PUBLISH_ROLES
+        ):
+            raise InvalidStateTransitionError("当前用户不能更新该任务。")
+        return update_task_status(
+            project_id=project_id,
+            task_id=task_id,
+            status=status,
+            actor_role=membership.role,
+            session=db,
+        )
 
 
 def submit_task_delivery(
@@ -641,9 +711,7 @@ def submit_daily_report_as_user(
         )
 
 
-def list_task_submissions(
-    project_id: int, session: Session | None = None
-) -> list[TaskSubmission]:
+def list_task_submissions(project_id: int, session: Session | None = None) -> list[TaskSubmission]:
     with session_context(session) as db:
         return list(
             db.scalars(
@@ -654,9 +722,7 @@ def list_task_submissions(
         )
 
 
-def list_daily_reports(
-    project_id: int, session: Session | None = None
-) -> list[DailyReport]:
+def list_daily_reports(project_id: int, session: Session | None = None) -> list[DailyReport]:
     with session_context(session) as db:
         return list(
             db.scalars(
@@ -667,14 +733,10 @@ def list_daily_reports(
         )
 
 
-def build_daily_risk_review(
-    project_id: int, session: Session | None = None
-) -> list[DailyRiskItem]:
+def build_daily_risk_review(project_id: int, session: Session | None = None) -> list[DailyRiskItem]:
     with session_context(session) as db:
         tasks = list(db.scalars(select(Task).where(Task.project_id == project_id)))
-        reports = list(
-            db.scalars(select(DailyReport).where(DailyReport.project_id == project_id))
-        )
+        reports = list(db.scalars(select(DailyReport).where(DailyReport.project_id == project_id)))
         submissions = list(
             db.scalars(select(TaskSubmission).where(TaskSubmission.project_id == project_id))
         )
@@ -756,9 +818,7 @@ def get_project_review_snapshot(
     with session_context(session) as db:
         require_session_member(session_token, project_id, session=db)
         tasks = list(db.scalars(select(Task).where(Task.project_id == project_id)))
-        reports = list(
-            db.scalars(select(DailyReport).where(DailyReport.project_id == project_id))
-        )
+        reports = list(db.scalars(select(DailyReport).where(DailyReport.project_id == project_id)))
         submissions = list(
             db.scalars(select(TaskSubmission).where(TaskSubmission.project_id == project_id))
         )
@@ -771,13 +831,10 @@ def get_project_review_snapshot(
             generated_at=utc_now(),
             task_counts=task_counts,
             report_count=len(reports),
-            accepted_delivery_count=sum(
-                item.review_status == "accepted" for item in submissions
-            ),
+            accepted_delivery_count=sum(item.review_status == "accepted" for item in submissions),
             pending_delivery_count=sum(
                 item.review_status == "pending_review" for item in submissions
             ),
             blocker_report_count=sum(bool(item.blocker.strip()) for item in reports),
             risks=risks,
         )
-
